@@ -494,6 +494,18 @@
       <button class="btn-p" style="width:100%;margin-bottom:8px;" onclick="connectSupabase()">保存して接続</button>
       <div class="ok-msg" id="sb-ok"></div>
 
+      <!-- 初期データ保存 -->
+      <div id="sb-init-area" style="display:none;margin-top:12px;border-top:0.5px solid #e5e5e0;padding-top:12px;">
+        <div style="font-size:12px;color:#888;margin-bottom:8px;line-height:1.6;">
+          接続後、スタッフ情報をSupabaseに保存してください。<br>
+          <span style="color:#E24B4A;font-weight:600;">※ 既存データは上書きされます</span>
+        </div>
+        <button onclick="saveInitialData()" style="width:100%;padding:11px;font-size:13px;font-weight:600;background:#1D9E75;color:#fff;border:none;border-radius:10px;cursor:pointer;margin-bottom:6px;">
+          スタッフ初期データをSupabaseに保存
+        </button>
+        <div class="ok-msg" id="sb-init-ok"></div>
+      </div>
+
       <details style="margin-top:12px;">
         <summary style="font-size:12px;color:#888;cursor:pointer;">Supabase SQLセットアップ（クリックして展開）</summary>
         <pre style="font-size:11px;font-family:'DM Mono',monospace;background:#f5f5f0;padding:12px;border-radius:8px;overflow-x:auto;color:#555;white-space:pre-wrap;margin-top:8px;">-- Supabaseのダッシュボード → SQL Editor で実行してください
@@ -678,6 +690,7 @@ async function connectSupabase(){
       document.getElementById('sb-dot').className='sb-dot on';
       document.getElementById('sb-status-bar').className='sb-status connected';
       document.getElementById('sb-status-text').textContent='Supabase 接続中（データはクラウドに保存されます）';
+      document.getElementById('sb-init-area').style.display='block';
       await loadFromSupabase();
     } else {
       throw new Error('接続失敗');
@@ -739,6 +752,44 @@ async function sbDeleteRecord(staffId,date){
   if(!sbConnected)return;
   try{await sbFetch('tc_records?staff_id=eq.'+staffId+'&date=eq.'+date,{method:'DELETE'});}
   catch(e){console.error('delete error:',e);}
+}
+
+// 初期スタッフデータをSupabaseに一括保存
+async function saveInitialData(){
+  const msg=document.getElementById('sb-init-ok');
+  msg.style.color='#888'; msg.textContent='保存中...';
+  try{
+    // 既存スタッフを全削除してから再登録
+    const existing=await sbFetch('tc_staff?select=id');
+    for(const s of existing){
+      await sbFetch('tc_staff?id=eq.'+s.id,{method:'DELETE'});
+    }
+    // スタッフを順番に登録
+    for(const s of staff){
+      await sbFetch('tc_staff',{
+        method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates'},
+        body:JSON.stringify({
+          id:s.id, name:s.name, pin:s.pin, leave:s.leave||false,
+          salary:salary[s.id]||210000,
+          is_hourly:s.isHourly||false,
+          hourly_wage:s.hourlyWage||1200,
+          default_start:s.defaultStart||'10:00',
+          default_end:s.defaultEnd||'19:00',
+          transport:s.transport||0
+        })
+      });
+    }
+    msg.style.color='#1D9E75';
+    msg.textContent='✓ '+staff.length+'名のスタッフデータを保存しました';
+    // ローカルデータをSupabaseから再読み込み
+    await loadFromSupabase();
+    renderTop();
+  } catch(e){
+    msg.style.color='#E24B4A';
+    msg.textContent='保存に失敗しました: '+e.message;
+    console.error('init save error:',e);
+  }
 }
 
 // =============================================
