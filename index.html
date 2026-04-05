@@ -729,6 +729,13 @@ async function loadFromSupabase(){
         reason:r.reason||'', timeReason:r.time_reason||''
       };
     });
+    // オーナーパスワードをtc_settingsから読み込む
+    try{
+      const settings=await sbFetch('tc_settings?select=*');
+      settings.forEach(s=>{
+        if(s.key==='owner_pw') ownerPw=s.value;
+      });
+    } catch(e){/* settingsテーブルが空でもOK */}
     renderTop();
   } catch(e){console.error('Supabase load error:',e);}
 }
@@ -782,6 +789,12 @@ async function saveInitialData(){
     }
     msg.style.color='#1D9E75';
     msg.textContent='✓ '+staff.length+'名のスタッフデータを保存しました';
+    // オーナーパスワードも保存
+    await sbFetch('tc_settings',{
+      method:'POST',
+      headers:{'Prefer':'resolution=merge-duplicates'},
+      body:JSON.stringify({key:'owner_pw', value:ownerPw})
+    });
     // ローカルデータをSupabaseから再読み込み
     await loadFromSupabase();
     renderTop();
@@ -2402,11 +2415,25 @@ function savePin(id){
   document.getElementById('pin-ok').textContent='変更しました';
   setTimeout(()=>{S.pinResetTarget=null;document.getElementById('pin-reset-area').innerHTML='';},1500);
 }
-function changeOwnerPw(){
+async function changeOwnerPw(){
   const v=document.getElementById('new-owner-pw').value; if(v.length<4)return;
-  ownerPw=v; document.getElementById('new-owner-pw').value='';
+  ownerPw=v;
+  document.getElementById('new-owner-pw').value='';
   document.getElementById('pw-ok').textContent='変更しました';
-  setTimeout(()=>document.getElementById('pw-ok').textContent='',2000);
+  // Supabaseにも保存
+  if(sbConnected){
+    try{
+      await sbFetch('tc_settings',{
+        method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates'},
+        body:JSON.stringify({key:'owner_pw', value:v})
+      });
+      document.getElementById('pw-ok').textContent='変更しました（クラウドに保存済み）';
+    } catch(e){
+      document.getElementById('pw-ok').textContent='変更しました（ローカルのみ）';
+    }
+  }
+  setTimeout(()=>document.getElementById('pw-ok').textContent='',3000);
 }
 
 // =============================================
