@@ -670,7 +670,7 @@ async function connectSupabase(){
   sbKey=document.getElementById('sb-key').value.trim();
   if(!sbUrl||!sbKey){document.getElementById('sb-ok').style.color='#E24B4A';document.getElementById('sb-ok').textContent='URLとKeyを入力してください';return;}
   try{
-    const res=await fetch(sbUrl+'/rest/v1/staff?select=id&limit=1',{headers:{'apikey':sbKey,'Authorization':'Bearer '+sbKey}});
+    const res=await fetch(sbUrl+'/rest/v1/tc_staff?select=id&limit=1',{headers:{'apikey':sbKey,'Authorization':'Bearer '+sbKey}});
     if(res.ok){
       sbConnected=true;
       document.getElementById('sb-ok').style.color='#1D9E75';
@@ -699,7 +699,7 @@ async function sbFetch(path,opts={}){
 
 async function loadFromSupabase(){
   try{
-    const staffData=await sbFetch('staff?select=*&order=created_at');
+    const staffData=await sbFetch('tc_staff?select=*&order=created_at');
     staff=staffData.map(s=>({
       id:s.id, name:s.name, pin:s.pin, leave:s.leave||false,
       isHourly:s.is_hourly||false, hourlyWage:s.hourly_wage||1200,
@@ -707,7 +707,7 @@ async function loadFromSupabase(){
       transport:s.transport||0
     }));
     staffData.forEach(s=>{salary[s.id]=s.salary||210000;});
-    const recs=await sbFetch('records?select=*');
+    const recs=await sbFetch('tc_records?select=*');
     rec={};
     recs.forEach(r=>{
       if(!rec[r.staff_id])rec[r.staff_id]={};
@@ -723,7 +723,7 @@ async function loadFromSupabase(){
 async function sbSaveRecord(staffId,date,data){
   if(!sbConnected)return;
   try{
-    await sbFetch('records',{
+    await sbFetch('tc_records',{
       method:'POST',
       headers:{'Prefer':'resolution=merge-duplicates'},
       body:JSON.stringify({
@@ -737,7 +737,7 @@ async function sbSaveRecord(staffId,date,data){
 
 async function sbDeleteRecord(staffId,date){
   if(!sbConnected)return;
-  try{await sbFetch('records?staff_id=eq.'+staffId+'&date=eq.'+date,{method:'DELETE'});}
+  try{await sbFetch('tc_records?staff_id=eq.'+staffId+'&date=eq.'+date,{method:'DELETE'});}
   catch(e){console.error('delete error:',e);}
 }
 
