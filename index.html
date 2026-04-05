@@ -684,6 +684,9 @@ async function connectSupabase(){
   try{
     const res=await fetch(sbUrl+'/rest/v1/tc_staff?select=id&limit=1',{headers:{'apikey':sbKey,'Authorization':'Bearer '+sbKey}});
     if(res.ok){
+      // localStorageに保存して次回以降も自動接続
+      localStorage.setItem('tc_sb_url', sbUrl);
+      localStorage.setItem('tc_sb_key', sbKey);
       sbConnected=true;
       document.getElementById('sb-ok').style.color='#1D9E75';
       document.getElementById('sb-ok').textContent='✓ 接続しました';
@@ -2464,6 +2467,31 @@ async function changeOwnerPw(){
 // 初期化
 // =============================================
 renderTop();
+
+// localStorageにSupabase接続情報があれば自動接続
+(async()=>{
+  const savedUrl=localStorage.getItem('tc_sb_url');
+  const savedKey=localStorage.getItem('tc_sb_key');
+  if(savedUrl&&savedKey){
+    sbUrl=savedUrl; sbKey=savedKey;
+    try{
+      const res=await fetch(sbUrl+'/rest/v1/tc_staff?select=id&limit=1',{headers:{'apikey':sbKey,'Authorization':'Bearer '+sbKey}});
+      if(res.ok){
+        sbConnected=true;
+        document.getElementById('sb-dot').className='sb-dot on';
+        document.getElementById('sb-status-bar').className='sb-status connected';
+        document.getElementById('sb-status-text').textContent='Supabase 接続中（データはクラウドに保存されます）';
+        document.getElementById('sb-init-area').style.display='block';
+        // 入力欄にも反映
+        const urlEl=document.getElementById('sb-url');
+        const keyEl=document.getElementById('sb-key');
+        if(urlEl)urlEl.value=savedUrl;
+        if(keyEl)keyEl.value=savedKey;
+        await loadFromSupabase();
+      }
+    } catch(e){/* 自動接続失敗は無視 */}
+  }
+})();
 </script>
 </body>
 </html>
