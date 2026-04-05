@@ -2253,7 +2253,7 @@ function renderSalary(){
         </div>
         <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:0.5px solid #e5e5e0;">
           <span style="font-size:12px;color:#888;flex:1;">月給</span>
-          <input type="number" value="${mon}" style="width:110px;padding:5px 8px;font-size:13px;font-family:'DM Mono',monospace;border:0.5px solid #ccc;border-radius:8px;background:#eee;color:#1a1a1a;text-align:right;" onchange="salary['${s.id}']=parseInt(this.value)||0;renderSalary();" />
+          <input type="number" value="${mon}" style="width:110px;padding:5px 8px;font-size:13px;font-family:'DM Mono',monospace;border:0.5px solid #ccc;border-radius:8px;background:#eee;color:#1a1a1a;text-align:right;" onchange="salary['${s.id}']=parseInt(this.value)||0;renderSalary();const st=staff.find(x=>x.id==='${s.id}');if(st)sbSaveStaff(st);" />
         </div>
         <div style="padding:4px 16px 12px;">
           ${sr('出勤日数（計）',total+'日')}
@@ -2327,7 +2327,7 @@ function renderCfg(){
         </div>
         ${!isHourly?`<div style="display:flex;align-items:center;gap:10px;">
           <div style="font-size:12px;color:#888;width:52px;">月給</div>
-          <div style="display:flex;align-items:center;gap:4px;"><span style="font-size:12px;color:#888;">¥</span><input type="number" value="${salary[s.id]||210000}" style="width:100px;padding:6px 8px;font-size:13px;font-family:'DM Mono',monospace;border:0.5px solid #ccc;border-radius:8px;background:#f5f5f0;color:#1a1a1a;text-align:right;" onchange="salary['${s.id}']=parseInt(this.value)||0" /></div>
+          <div style="display:flex;align-items:center;gap:4px;"><span style="font-size:12px;color:#888;">¥</span><input type="number" value="${salary[s.id]||210000}" style="width:100px;padding:6px 8px;font-size:13px;font-family:'DM Mono',monospace;border:0.5px solid #ccc;border-radius:8px;background:#f5f5f0;color:#1a1a1a;text-align:right;" onchange="salary['${s.id}']=parseInt(this.value)||0;const st=staff.find(x=>x.id==='${s.id}');if(st)sbSaveStaff(st);" /></div>
         </div>`:''}
         ${isHourly?`<div style="display:flex;align-items:center;gap:10px;">
           <div style="font-size:12px;color:#888;width:52px;">時給</div>
@@ -2370,13 +2370,13 @@ function renderCfg(){
   else{document.getElementById('lopt-custom').classList.add('sel');ci.disabled=false;ci.value=offLimit;}
 }
 
-function updateTransport(id,val){const s=staff.find(x=>x.id===id);if(s)s.transport=parseInt(val)||0;}
-function toggleHourly(id){const s=staff.find(x=>x.id===id);if(s){s.isHourly=!s.isHourly;if(!s.hourlyWage)s.hourlyWage=1200;if(!s.defaultStart)s.defaultStart='10:00';if(!s.defaultEnd)s.defaultEnd='19:00';}renderCfg();}
-function updateHourlyWage(id,val){const s=staff.find(x=>x.id===id);if(s)s.hourlyWage=parseInt(val)||1200;}
-function updateDefaultTime(id,field,val){const s=staff.find(x=>x.id===id);if(s){if(field==='start')s.defaultStart=val;else s.defaultEnd=val;}}
-function toggleLeave(id){const s=staff.find(x=>x.id===id);if(s)s.leave=!s.leave;renderCfg();}
+function updateTransport(id,val){const s=staff.find(x=>x.id===id);if(s){s.transport=parseInt(val)||0;sbSaveStaff(s);}}
+function toggleHourly(id){const s=staff.find(x=>x.id===id);if(s){s.isHourly=!s.isHourly;if(!s.hourlyWage)s.hourlyWage=1200;if(!s.defaultStart)s.defaultStart='10:00';if(!s.defaultEnd)s.defaultEnd='19:00';sbSaveStaff(s);}renderCfg();}
+function updateHourlyWage(id,val){const s=staff.find(x=>x.id===id);if(s){s.hourlyWage=parseInt(val)||1200;sbSaveStaff(s);}}
+function updateDefaultTime(id,field,val){const s=staff.find(x=>x.id===id);if(s){if(field==='start')s.defaultStart=val;else s.defaultEnd=val;sbSaveStaff(s);}}
+function toggleLeave(id){const s=staff.find(x=>x.id===id);if(s){s.leave=!s.leave;sbSaveStaff(s);}renderCfg();}
 
-function addStaffMember(){
+async function addStaffMember(){
   const name=document.getElementById('add-staff-name').value.trim();
   const pin=document.getElementById('add-staff-pin').value.trim();
   const transport=parseInt(document.getElementById('add-staff-transport').value)||0;
@@ -2385,9 +2385,11 @@ function addStaffMember(){
   if(!name){msg.style.color='#E24B4A';msg.textContent='名前を入力してください';return;}
   if(pin.length!==4){msg.style.color='#E24B4A';msg.textContent='PINは4桁で入力してください';return;}
   const id='s'+Date.now();
-  staff.push({id,name,pin,leave:false,isHourly:false,hourlyWage:1200,defaultStart:'10:00',defaultEnd:'19:00',transport});
+  const newStaff={id,name,pin,leave:false,isHourly:false,hourlyWage:1200,defaultStart:'10:00',defaultEnd:'19:00',transport};
+  staff.push(newStaff);
   salary[id]=sal;
-  msg.style.color='#1D9E75';msg.textContent=name+'を追加しました';
+  await sbSaveStaff(newStaff);
+  msg.style.color='#1D9E75';msg.textContent=name+'を追加しました'+(sbConnected?'（クラウドに保存済み）':'');
   document.getElementById('add-staff-name').value='';
   document.getElementById('add-staff-pin').value='';
   document.getElementById('add-staff-transport').value='';
@@ -2407,12 +2409,34 @@ function openPinReset(id){
     <div class="ok-msg" id="pin-ok" style="margin-top:6px;"></div>
   </div>`;
 }
-function savePin(id){
+// スタッフ情報をSupabaseに保存する共通関数
+async function sbSaveStaff(s){
+  if(!sbConnected)return;
+  try{
+    await sbFetch('tc_staff',{
+      method:'POST',
+      headers:{'Prefer':'resolution=merge-duplicates'},
+      body:JSON.stringify({
+        id:s.id, name:s.name, pin:s.pin, leave:s.leave||false,
+        salary:salary[s.id]||210000,
+        is_hourly:s.isHourly||false,
+        hourly_wage:s.hourlyWage||1200,
+        default_start:s.defaultStart||'10:00',
+        default_end:s.defaultEnd||'19:00',
+        transport:s.transport||0
+      })
+    });
+  } catch(e){console.error('staff save error:',e);}
+}
+
+async function savePin(id){
   const v=document.getElementById('new-pin-val').value;
   if(v.length!==4){document.getElementById('pin-ok').style.color='#E24B4A';document.getElementById('pin-ok').textContent='4桁で入力してください';return;}
-  staff.find(x=>x.id===id).pin=v;
+  const s=staff.find(x=>x.id===id);
+  s.pin=v;
+  await sbSaveStaff(s);
   document.getElementById('pin-ok').style.color='#1D9E75';
-  document.getElementById('pin-ok').textContent='変更しました';
+  document.getElementById('pin-ok').textContent=sbConnected?'変更しました（クラウドに保存済み）':'変更しました';
   setTimeout(()=>{S.pinResetTarget=null;document.getElementById('pin-reset-area').innerHTML='';},1500);
 }
 async function changeOwnerPw(){
