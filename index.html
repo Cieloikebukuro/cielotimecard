@@ -771,16 +771,16 @@ async function saveInitialData(){
   try{
     // 既存スタッフを全削除してから再登録
     const existing=await sbFetch('tc_staff?select=id');
-    for(const s of existing){
-      await sbFetch('tc_staff?id=eq.'+s.id,{method:'DELETE'});
+    for(const ex of existing){
+      await sbFetch('tc_staff?id=eq.'+ex.id,{method:'DELETE'});
     }
-    // スタッフを順番に登録
+    // IDなしでINSERT（SupabaseがUUIDを自動発行）
     for(const s of staff){
       await sbFetch('tc_staff',{
         method:'POST',
-        headers:{'Prefer':'resolution=merge-duplicates'},
+        headers:{'Prefer':'return=representation'},
         body:JSON.stringify({
-          id:s.id, name:s.name, pin:s.pin, leave:s.leave||false,
+          name:s.name, pin:s.pin, leave:s.leave||false,
           salary:salary[s.id]||210000,
           is_hourly:s.isHourly||false,
           hourly_wage:s.hourlyWage||1200,
@@ -790,15 +790,15 @@ async function saveInitialData(){
         })
       });
     }
-    msg.style.color='#1D9E75';
-    msg.textContent='✓ '+staff.length+'名のスタッフデータを保存しました';
     // オーナーパスワードも保存
     await sbFetch('tc_settings',{
       method:'POST',
       headers:{'Prefer':'resolution=merge-duplicates'},
       body:JSON.stringify({key:'owner_pw', value:ownerPw})
     });
-    // ローカルデータをSupabaseから再読み込み
+    msg.style.color='#1D9E75';
+    msg.textContent='✓ '+staff.length+'名のスタッフデータを保存しました';
+    // Supabaseから再読み込み（UUIDで更新）
     await loadFromSupabase();
     renderTop();
   } catch(e){
