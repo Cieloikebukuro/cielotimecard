@@ -604,18 +604,18 @@ let sbUrl = '', sbKey = '', sbConnected = false;
 // スタイリストデータ
 // days: 0=月 1=火 2=水 3=木 4=金 5=土 6=日
 let stylists = [
-  {id:'st1', name:'小寺',   store:'cielo', days:[1,1,1,1,1,0,0]},
-  {id:'st2', name:'佐藤',   store:'cielo', days:[1,1,1,1,1,0,0]},
-  {id:'st3', name:'田部',   store:'cielo', days:[1,0,1,0,1,1,0]},
-  {id:'st4', name:'伊藤',   store:'cielo', days:[1,1,0,1,1,0,0]},
-  {id:'st5', name:'武塚',   store:'cielo', days:[1,1,1,1,1,0,0]},
-  {id:'st6', name:'小山',   store:'cielo', days:[1,0,1,1,1,1,0]},
-  {id:'st7', name:'野田',   store:'cielo', days:[1,1,1,0,1,0,0]},
-  {id:'st8', name:'小笠原', store:'cielo', days:[0,1,1,1,1,1,0]},
-  {id:'st9', name:'上野',   store:'glam',  days:[1,1,1,1,1,0,0]},
-  {id:'st10',name:'岩上',   store:'glam',  days:[1,1,1,1,1,0,0]},
-  {id:'st11',name:'栗原',   store:'glam',  days:[1,0,1,1,1,1,0]},
-  {id:'st12',name:'長澤',   store:'glam',  days:[1,1,1,0,1,0,0]},
+  {id:'st1', name:'小寺',   store:'cielo', days:[1,1,1,1,1,0,0], holiday:1},
+  {id:'st2', name:'佐藤',   store:'cielo', days:[1,1,1,1,1,0,0], holiday:1},
+  {id:'st3', name:'田部',   store:'cielo', days:[1,0,1,0,1,1,0], holiday:1},
+  {id:'st4', name:'伊藤',   store:'cielo', days:[1,1,0,1,1,0,0], holiday:1},
+  {id:'st5', name:'武塚',   store:'cielo', days:[1,1,1,1,1,0,0], holiday:1},
+  {id:'st6', name:'小山',   store:'cielo', days:[1,0,1,1,1,1,0], holiday:1},
+  {id:'st7', name:'野田',   store:'cielo', days:[1,1,1,0,1,0,0], holiday:1},
+  {id:'st8', name:'小笠原', store:'cielo', days:[0,1,1,1,1,1,0], holiday:1},
+  {id:'st9', name:'上野',   store:'glam',  days:[1,1,1,1,1,0,0], holiday:1},
+  {id:'st10',name:'岩上',   store:'glam',  days:[1,1,1,1,1,0,0], holiday:1},
+  {id:'st11',name:'栗原',   store:'glam',  days:[1,0,1,1,1,1,0], holiday:1},
+  {id:'st12',name:'長澤',   store:'glam',  days:[1,1,1,0,1,0,0], holiday:1},
 ];
 
 let S_stylistStore = 'cielo'; // 現在表示中の店舗タブ
@@ -1519,6 +1519,13 @@ function renderStylistPage(){
       >${label}</button>`;
     }).join('');
 
+    // 祝日ボタン
+    const holActive = s.holiday === 1;
+    const holBtn = `<button
+      onclick="toggleHoliday('${s.id}')"
+      style="width:34px;height:34px;border-radius:8px;border:${holActive?'none':'0.5px solid #ddd'};background:${holActive?'#F8C8E8':'#f0f0f0'};color:${holActive?'#8B006B':'#aaa'};font-size:11px;font-weight:600;cursor:pointer;transition:all .12s;"
+    >祝</button>`;
+
     const workCount = s.days.reduce((a,b)=>a+b,0);
 
     return `<div style="background:#fff;border:0.5px solid ${storeBdr};border-radius:14px;padding:1.1rem 1.1rem 1rem;margin-bottom:10px;">
@@ -1526,12 +1533,12 @@ function renderStylistPage(){
         <div style="width:38px;height:38px;border-radius:50%;background:${storeBg};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;color:${storeTxt};flex-shrink:0;">${s.name.slice(0,1)}</div>
         <div style="flex:1;">
           <div style="font-size:15px;font-weight:500;color:#1a1a1a;">${s.name}</div>
-          <div style="font-size:11px;color:#888;margin-top:1px;">週${workCount}日出勤</div>
+          <div style="font-size:11px;color:#888;margin-top:1px;">週${workCount}日出勤${holActive?'・祝日出勤':''}</div>
         </div>
         <button onclick="deleteStylist('${s.id}')" style="padding:4px 10px;font-size:11px;font-weight:600;color:#888;border:0.5px solid #ddd;border-radius:6px;background:transparent;cursor:pointer;">削除</button>
       </div>
-      <div style="font-size:11px;font-weight:600;letter-spacing:0.06em;color:#888;margin-bottom:8px;">出勤曜日</div>
-      <div style="display:flex;gap:6px;">${dayBtns}</div>
+      <div style="font-size:11px;font-weight:600;letter-spacing:0.06em;color:#888;margin-bottom:8px;">出勤曜日・祝日</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">${dayBtns}${holBtn}</div>
     </div>`;
   }).join('');
 }
@@ -1543,11 +1550,18 @@ function toggleDow(stylistId, dowIndex){
   renderStylistPage();
 }
 
+function toggleHoliday(stylistId){
+  const s = stylists.find(x => x.id === stylistId);
+  if(!s) return;
+  s.holiday = s.holiday === 1 ? 0 : 1;
+  renderStylistPage();
+}
+
 function addStylist(){
   const name = document.getElementById('new-stylist-name').value.trim();
   if(!name) return;
   const id = 'st' + Date.now();
-  stylists.push({id, name, store: S_stylistStore, days:[1,1,1,1,1,0,0]});
+  stylists.push({id, name, store: S_stylistStore, days:[1,1,1,1,1,0,0], holiday:1});
   document.getElementById('new-stylist-name').value = '';
   renderStylistPage();
 }
@@ -1557,10 +1571,52 @@ function deleteStylist(id){
   renderStylistPage();
 }
 
+// 日本の祝日判定（簡易版：固定祝日＋移動祝日の主要なもの）
+function isJpHoliday(dateObj){
+  const y=dateObj.getFullYear(), m=dateObj.getMonth()+1, d=dateObj.getDate();
+  const dow=dateObj.getDay(); // 0=日
+  // 固定祝日
+  const fixed=[
+    [1,1],[2,11],[2,23],[4,29],[5,3],[5,4],[5,5],
+    [7,19],[8,11],[9,21],[11,3],[11,23],[12,23]
+  ];
+  for(const [hm,hd] of fixed){if(m===hm&&d===hd)return true;}
+  // 元日
+  if(m===1&&d===1)return true;
+  // 成人の日（1月第2月曜）
+  if(m===1&&dow===1&&d>=8&&d<=14)return true;
+  // 海の日（7月第3月曜）
+  if(m===7&&dow===1&&d>=15&&d<=21)return true;
+  // 敬老の日（9月第3月曜）
+  if(m===9&&dow===1&&d>=15&&d<=21)return true;
+  // スポーツの日（10月第2月曜）
+  if(m===10&&dow===1&&d>=8&&d<=14)return true;
+  // 春分の日・秋分の日（近似計算）
+  if(m===3){
+    const vd=Math.floor(20.8431+0.242194*(y-1980)-Math.floor((y-1980)/4));
+    if(d===vd)return true;
+  }
+  if(m===9){
+    const vd=Math.floor(23.2488+0.242194*(y-1980)-Math.floor((y-1980)/4));
+    if(d===vd)return true;
+  }
+  // 振替休日（日曜の翌月曜）
+  if(dow===1){
+    const prev=new Date(y,m-1,d-1);
+    if(isJpHoliday(prev))return true;
+  }
+  return false;
+}
+
 // 特定日に出勤するスタイリスト一覧を返す（Excel出力用）
 function getStylistsOnDate(store, dateObj){
   const dow = (dateObj.getDay() + 6) % 7; // 0=月〜6=日
-  return stylists.filter(s => s.store === store && s.days[dow] === 1);
+  const isHoliday = isJpHoliday(dateObj);
+  return stylists.filter(s => {
+    if(s.store !== store) return false;
+    if(isHoliday) return s.holiday === 1; // 祝日はholidayフラグで判定
+    return s.days[dow] === 1;
+  });
 }
 
 // =============================================
