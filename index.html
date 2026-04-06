@@ -282,6 +282,11 @@
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="12" height="11" rx="2"/><path d="M5 1v4M11 1v4M2 7h12"/></svg>
       公休・夏休みを編集する
     </button>
+    <button class="edit-hol-btn" onclick="openMyPinChange()" style="margin-bottom:1rem;">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="6" r="3"/><path d="M2 14c0-3 2.7-5 6-5s6 2 6 5"/></svg>
+      PINを変更する
+    </button>
+    <div id="my-pin-area"></div>
     <div class="sec-label">勤怠カレンダー</div>
     <div class="card" style="padding:1rem;">
       <div class="cal-nav">
@@ -746,6 +751,17 @@ async function loadFromSupabase(){
         if(s.key==='owner_pw') ownerPw=s.value;
       });
     } catch(e){/* settingsテーブルが空でもOK */}
+    // スタイリスト設定をtc_stylistsから読み込む
+    try{
+      const stData=await sbFetch('tc_stylists?select=*&order=created_at');
+      if(stData&&stData.length>0){
+        stylists=stData.map(s=>({
+          id:s.id, name:s.name, store:s.store,
+          days:s.days||[1,1,1,1,1,0,0],
+          holiday:s.holiday||0
+        }));
+      }
+    } catch(e){/* スタイリストテーブルがなければ初期データを使用 */}
     renderTop();
   } catch(e){console.error('Supabase load error:',e);}
 }
@@ -814,6 +830,14 @@ async function saveInitialData(){
     });
     msg.style.color='#1D9E75';
     msg.textContent='✓ '+staff.length+'名のスタッフデータを保存しました';
+    // スタイリスト初期データも保存
+    for(const s of stylists){
+      await sbFetch('tc_stylists',{
+        method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates'},
+        body:JSON.stringify({id:s.id,name:s.name,store:s.store,days:s.days,holiday:s.holiday||0})
+      });
+    }
     // Supabaseから再読み込み（UUIDで更新）
     await loadFromSupabase();
     renderTop();
@@ -873,7 +897,39 @@ function openHolidaySetup(mode,month){
   document.getElementById('hol-sub').textContent=mode==='first'?name+'さん、公休と夏休みをまとめて設定してください':'変更する日をタップしてください';
   updateDtBar(); renderHolCal(); renderCountBar(); renderLimitBar(); showScr('holiday');
 }
-function openHolidayEdit(){S.selStaff=staff.find(x=>x.id===S.role);openHolidaySetup('edit',S.calMonth);}
+function openMyPinChange(){
+  const area=document.getElementById('my-pin-area');
+  if(area.innerHTML){area.innerHTML='';return;}
+  area.innerHTML=`<div class="pin-reset-modal" style="margin-bottom:1rem;">
+    <div style="font-size:13px;font-weight:500;margin-bottom:10px;">PINを変更する</div>
+    <div style="font-size:12px;color:#888;margin-bottom:10px;">現在のPINと新しいPINを入力してください</div>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <input type="password" id="my-cur-pin" maxlength="4" placeholder="現在のPIN（4桁）"
+        style="padding:9px 12px;font-size:14px;font-family:'DM Mono',monospace;border:0.5px solid #ccc;border-radius:8px;background:#eee;color:#1a1a1a;letter-spacing:4px;" />
+      <input type="password" id="my-new-pin" maxlength="4" placeholder="新しいPIN（4桁）"
+        style="padding:9px 12px;font-size:14px;font-family:'DM Mono',monospace;border:0.5px solid #ccc;border-radius:8px;background:#eee;color:#1a1a1a;letter-spacing:4px;" />
+      <button class="btn-p btn-sm" onclick="saveMyPin()">変更する</button>
+    </div>
+    <div class="ok-msg" id="my-pin-ok" style="margin-top:6px;"></div>
+  </div>`;
+  resetSess();
+}
+
+async function saveMyPin(){
+  const s=staff.find(x=>x.id===S.role);
+  if(!s)return;
+  const cur=document.getElementById('my-cur-pin').value;
+  const nw=document.getElementById('my-new-pin').value;
+  const msg=document.getElementById('my-pin-ok');
+  if(cur!==s.pin){msg.style.color='#E24B4A';msg.textContent='現在のPINが違います';return;}
+  if(nw.length!==4){msg.style.color='#E24B4A';msg.textContent='新しいPINは4桁で入力してください';return;}
+  s.pin=nw;
+  await sbSaveStaff(s);
+  msg.style.color='#1D9E75';
+  msg.textContent=sbConnected?'✓ PINを変更しました（クラウドに保存済み）':'✓ PINを変更しました';
+  setTimeout(()=>{document.getElementById('my-pin-area').innerHTML='';},2000);
+  resetSess();
+}
 
 function setDayType(t){S.curDayType=t;if(t==='summer')S.summerSel=[];updateDtBar();renderHolCal();renderCountBar();renderLimitBar();}
 function updateDtBar(){
@@ -1547,6 +1603,7 @@ function toggleDow(stylistId, dowIndex){
   const s = stylists.find(x => x.id === stylistId);
   if(!s) return;
   s.days[dowIndex] = s.days[dowIndex] === 1 ? 0 : 1;
+  sbSaveStylist(s);
   renderStylistPage();
 }
 
@@ -1554,21 +1611,43 @@ function toggleHoliday(stylistId){
   const s = stylists.find(x => x.id === stylistId);
   if(!s) return;
   s.holiday = s.holiday === 1 ? 0 : 1;
+  sbSaveStylist(s);
   renderStylistPage();
 }
 
-function addStylist(){
+async function addStylist(){
   const name = document.getElementById('new-stylist-name').value.trim();
   if(!name) return;
   const id = 'st' + Date.now();
-  stylists.push({id, name, store: S_stylistStore, days:[1,1,1,1,1,0,0], holiday:1});
+  const newSt = {id, name, store: S_stylistStore, days:[1,1,1,1,1,0,0], holiday:1};
+  stylists.push(newSt);
+  await sbSaveStylist(newSt);
   document.getElementById('new-stylist-name').value = '';
   renderStylistPage();
 }
 
-function deleteStylist(id){
+async function deleteStylist(id){
   stylists = stylists.filter(s => s.id !== id);
+  if(sbConnected){
+    try{await sbFetch('tc_stylists?id=eq.'+id,{method:'DELETE'});}
+    catch(e){console.error('stylist delete error:',e);}
+  }
   renderStylistPage();
+}
+
+// スタイリスト情報をSupabaseに保存
+async function sbSaveStylist(s){
+  if(!sbConnected)return;
+  try{
+    await sbFetch('tc_stylists',{
+      method:'POST',
+      headers:{'Prefer':'resolution=merge-duplicates'},
+      body:JSON.stringify({
+        id:s.id, name:s.name, store:s.store,
+        days:s.days, holiday:s.holiday||0
+      })
+    });
+  } catch(e){console.error('stylist save error:',e);}
 }
 
 // 日本の祝日判定（簡易版：固定祝日＋移動祝日の主要なもの）
