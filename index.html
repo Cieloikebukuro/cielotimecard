@@ -705,12 +705,19 @@ async function connectSupabase(){
 }
 
 async function sbFetch(path,opts={}){
+  const {headers:extraHeaders,...restOpts}=opts;
   const res=await fetch(sbUrl+'/rest/v1/'+path,{
-    headers:{'apikey':sbKey,'Authorization':'Bearer '+sbKey,'Content-Type':'application/json','Prefer':'return=representation',...(opts.headers||{})},
-    ...opts
+    ...restOpts,
+    headers:{
+      'apikey':sbKey,
+      'Authorization':'Bearer '+sbKey,
+      'Content-Type':'application/json',
+      ...(extraHeaders||{})
+    }
   });
   if(!res.ok)throw new Error(await res.text());
-  return res.json();
+  const text=await res.text();
+  return text?JSON.parse(text):[];
 }
 
 async function loadFromSupabase(){
@@ -746,22 +753,31 @@ async function loadFromSupabase(){
 async function sbSaveRecord(staffId,date,data){
   if(!sbConnected)return;
   try{
-    await sbFetch('tc_records',{
+    const res=await fetch(sbUrl+'/rest/v1/tc_records',{
       method:'POST',
-      headers:{'Prefer':'resolution=merge-duplicates'},
+      headers:{
+        'apikey':sbKey,'Authorization':'Bearer '+sbKey,
+        'Content-Type':'application/json',
+        'Prefer':'resolution=merge-duplicates'
+      },
       body:JSON.stringify({
         staff_id:staffId, date, type:data.type,
         start_time:data.start||DS, end_time:data.end||DE,
         reason:data.reason||'', time_reason:data.timeReason||''
       })
     });
+    if(!res.ok){const t=await res.text();console.error('save error:',t);}
   } catch(e){console.error('save error:',e);}
 }
 
 async function sbDeleteRecord(staffId,date){
   if(!sbConnected)return;
-  try{await sbFetch('tc_records?staff_id=eq.'+staffId+'&date=eq.'+date,{method:'DELETE'});}
-  catch(e){console.error('delete error:',e);}
+  try{
+    await fetch(sbUrl+'/rest/v1/tc_records?staff_id=eq.'+staffId+'&date=eq.'+date,{
+      method:'DELETE',
+      headers:{'apikey':sbKey,'Authorization':'Bearer '+sbKey,'Content-Type':'application/json'}
+    });
+  } catch(e){console.error('delete error:',e);}
 }
 
 // 初期スタッフデータをSupabaseに一括保存
@@ -2416,9 +2432,13 @@ function openPinReset(id){
 async function sbSaveStaff(s){
   if(!sbConnected)return;
   try{
-    await sbFetch('tc_staff',{
+    const res=await fetch(sbUrl+'/rest/v1/tc_staff',{
       method:'POST',
-      headers:{'Prefer':'resolution=merge-duplicates'},
+      headers:{
+        'apikey':sbKey,'Authorization':'Bearer '+sbKey,
+        'Content-Type':'application/json',
+        'Prefer':'resolution=merge-duplicates'
+      },
       body:JSON.stringify({
         id:s.id, name:s.name, pin:s.pin, leave:s.leave||false,
         salary:salary[s.id]||210000,
@@ -2429,6 +2449,7 @@ async function sbSaveStaff(s){
         transport:s.transport||0
       })
     });
+    if(!res.ok){const t=await res.text();console.error('staff save error:',t);}
   } catch(e){console.error('staff save error:',e);}
 }
 
