@@ -206,9 +206,11 @@
   <div class="nav" id="main-nav" style="display:none;">
     <button class="nav-btn" id="nav-my" onclick="nav('my',this)">マイページ</button>
     <button class="nav-btn" id="nav-att" onclick="nav('att',this)">勤怠</button>
+    <button class="nav-btn" id="nav-wish" onclick="nav('wish',this)">希望休</button>
     <button class="nav-btn" id="nav-salary" onclick="nav('salary',this)">給与</button>
     <button class="nav-btn" id="nav-stylist" onclick="nav('stylist',this)">スタイリスト</button>
     <button class="nav-btn" id="nav-wari" onclick="nav('wari',this)">日割り</button>
+    <button class="nav-btn" id="nav-wishview" onclick="nav('wishview',this)">希望休一覧</button>
     <button class="nav-btn" id="nav-cfg" onclick="nav('cfg',this)">設定</button>
   </div>
 
@@ -485,6 +487,22 @@
       <div style="font-size:12px;color:#888;margin-top:10px;" id="limit-current-display"></div>
     </div>
 
+    <!-- 希望休設定 -->
+    <div class="sec-label" style="margin-bottom:10px;margin-top:1.5rem;">希望休申請設定</div>
+    <div class="cfg-block">
+      <div class="block-title">上限日数（スタッフが選べる最大日数）</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+        <input type="number" id="wish-limit-input" min="1" max="31" placeholder="例: 3" style="width:80px;padding:7px 10px;font-size:14px;font-family:'DM Mono',monospace;border:0.5px solid #ccc;border-radius:8px;background:#f5f5f0;color:#1a1a1a;" oninput="saveWishSettings()" />
+        <span style="font-size:13px;color:#888;">日 / 月</span>
+      </div>
+      <div style="margin-top:1rem;" class="block-title">提出期限（翌月分を毎月 何日まで）</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+        <input type="number" id="wish-deadline-input" min="1" max="31" placeholder="例: 25" style="width:80px;padding:7px 10px;font-size:14px;font-family:'DM Mono',monospace;border:0.5px solid #ccc;border-radius:8px;background:#f5f5f0;color:#1a1a1a;" oninput="saveWishSettings()" />
+        <span style="font-size:13px;color:#888;">日まで</span>
+      </div>
+      <div style="font-size:12px;color:#888;margin-top:10px;" id="wish-cfg-display"></div>
+    </div>
+
     <!-- 年末年始 -->
     <div class="sec-label" style="margin-bottom:10px;margin-top:1.5rem;">年末年始設定</div>
     <div class="cfg-block">
@@ -599,6 +617,94 @@ ALTER TABLE settings DISABLE ROW LEVEL SECURITY;</pre>
       </details>
     </div>
   </div>
+
+  <!-- 希望休申請（スタッフ用） -->
+  <div class="scr" id="scr-wish">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;">
+      <div>
+        <div style="font-size:17px;font-weight:500;color:#1a1a1a;" id="wish-title">希望休の申請</div>
+        <div style="font-size:12px;color:#888;margin-top:2px;" id="wish-subtitle"></div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:11px;color:#888;">提出期限</div>
+        <div style="font-size:14px;font-weight:600;color:#1a1a1a;" id="wish-deadline-disp">—</div>
+      </div>
+    </div>
+
+    <!-- ステータスバー -->
+    <div style="display:flex;align-items:center;justify-content:space-between;background:#f5f5f0;border-radius:10px;padding:9px 14px;margin-bottom:1rem;">
+      <div>
+        <span style="font-size:11px;color:#888;">選択中</span>
+        <span style="font-size:22px;font-weight:500;font-family:'DM Mono',monospace;color:#1a1a1a;margin-left:6px;" id="wish-count">0</span>
+        <span style="font-size:12px;color:#888;margin-left:2px;">日</span>
+      </div>
+      <div id="wish-limit-badge" style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:#EBF4FD;color:#185FA5;"></div>
+    </div>
+
+    <!-- 期限切れ警告 -->
+    <div id="wish-expired-bar" style="display:none;background:#FCEBEB;border-radius:10px;padding:9px 14px;margin-bottom:1rem;font-size:12px;color:#A32D2D;font-weight:600;">
+      ⚠️ 提出期限を過ぎているため変更できません
+    </div>
+
+    <!-- 提出済みバナー -->
+    <div id="wish-submitted-bar" style="display:none;background:#E1F5EE;border-radius:10px;padding:9px 14px;margin-bottom:1rem;font-size:12px;color:#0F6E56;font-weight:600;">
+      ✓ 提出済みです（期限前であれば変更できます）
+    </div>
+
+    <!-- カレンダー -->
+    <div class="card" style="padding:12px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div style="font-size:14px;font-weight:500;color:#1a1a1a;" id="wish-cal-month"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;text-align:center;margin-bottom:6px;">
+        <div style="font-size:10px;color:#888;padding:2px;">日</div>
+        <div style="font-size:10px;color:#888;padding:2px;">月</div>
+        <div style="font-size:10px;color:#888;padding:2px;">火</div>
+        <div style="font-size:10px;color:#888;padding:2px;">水</div>
+        <div style="font-size:10px;color:#888;padding:2px;">木</div>
+        <div style="font-size:10px;color:#888;padding:2px;">金</div>
+        <div style="font-size:10px;color:#E24B4A;padding:2px;">土</div>
+      </div>
+      <div id="wish-cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;"></div>
+    </div>
+
+    <button class="btn-p" id="wish-submit-btn" onclick="submitWish()" style="width:100%;margin-top:4px;">提出する</button>
+    <div class="ok-msg" id="wish-ok" style="text-align:center;"></div>
+  </div>
+
+  <!-- 希望休一覧（オーナー用） -->
+  <div class="scr" id="scr-wishview">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;">
+      <div style="font-size:17px;font-weight:500;color:#1a1a1a;">希望休 一覧</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <button onclick="wishViewMove(-1)" style="background:#eee;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:14px;">‹</button>
+        <div style="font-size:14px;font-weight:500;color:#1a1a1a;min-width:80px;text-align:center;" id="wishview-month-label"></div>
+        <button onclick="wishViewMove(1)" style="background:#eee;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:14px;">›</button>
+      </div>
+    </div>
+
+    <!-- スタッフ凡例 -->
+    <div id="wishview-legend" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:1rem;"></div>
+
+    <!-- カレンダー -->
+    <div class="card" style="padding:12px;">
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;text-align:center;margin-bottom:6px;">
+        <div style="font-size:10px;color:#888;padding:2px;">日</div>
+        <div style="font-size:10px;color:#888;padding:2px;">月</div>
+        <div style="font-size:10px;color:#888;padding:2px;">火</div>
+        <div style="font-size:10px;color:#888;padding:2px;">水</div>
+        <div style="font-size:10px;color:#888;padding:2px;">木</div>
+        <div style="font-size:10px;color:#888;padding:2px;">金</div>
+        <div style="font-size:10px;color:#E24B4A;padding:2px;">土</div>
+      </div>
+      <div id="wishview-cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;"></div>
+    </div>
+
+    <!-- 提出状況 -->
+    <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:#888;text-transform:uppercase;margin-bottom:10px;margin-top:8px;">提出状況</div>
+    <div id="wishview-status-list"></div>
+  </div>
+
 </div>
 
 <script>
@@ -1367,11 +1473,11 @@ function updateLimitDisplay(){const el=document.getElementById('limit-current-di
 // =============================================
 function loginStaff(s){
   S.role=s.id; S.calMonth=new Date();
-  // アシスタントはマイページタブのみ表示（他は非表示）
-  ['my','att','salary','stylist','wari','cfg'].forEach(id=>{
+  // アシスタントはマイページ・希望休タブのみ表示
+  ['my','att','wish','salary','stylist','wari','wishview','cfg'].forEach(id=>{
     const b=document.getElementById('nav-'+id);
     if(!b)return;
-    if(id==='my'){
+    if(id==='my'||id==='wish'){
       b.style.display='block';
       b.disabled=false;
     } else {
@@ -1391,7 +1497,7 @@ function ownerLogin(){
   if(pw===ownerPw){
     S.role='owner';
     // オーナーは全タブ表示
-    ['my','att','salary','stylist','wari','cfg'].forEach(id=>{
+    ['my','att','wish','salary','stylist','wari','wishview','cfg'].forEach(id=>{
       const b=document.getElementById('nav-'+id);
       if(b){b.style.display='block';b.disabled=false;b.classList.remove('on');}
     });
@@ -1411,7 +1517,7 @@ function doLogout(){
   document.getElementById('main-nav').style.display='none';
   showScr('top'); renderTop();
 }
-function setupNav(ids){['my','att','salary','stylist','wari','cfg'].forEach(id=>{const b=document.getElementById('nav-'+id);if(b){b.disabled=!ids.includes(id);b.classList.remove('on');}});}
+function setupNav(ids){['my','att','wish','salary','stylist','wari','wishview','cfg'].forEach(id=>{const b=document.getElementById('nav-'+id);if(b){b.disabled=!ids.includes(id);b.classList.remove('on');}});}
 function setPill(label,cls){const el=document.getElementById('role-pill');el.textContent=label;el.className='role-pill '+cls;el.style.display='block';}
 function showScr(name){document.querySelectorAll('.scr').forEach(s=>s.classList.remove('on'));document.getElementById('scr-'+name).classList.add('on');}
 function nav(name,el){
@@ -1421,9 +1527,11 @@ function nav(name,el){
   if(el)el.classList.add('on');
   if(name==='my')renderMyPage();
   if(name==='att')renderAtt();
+  if(name==='wish')renderWish();
   if(name==='salary')renderSalary();
   if(name==='stylist'){S_stylistStore='cielo';renderStylistPage();}
   if(name==='wari')renderWariPage();
+  if(name==='wishview')renderWishView();
   if(name==='cfg')renderCfg();
 }
 
@@ -3129,6 +3237,287 @@ async function changeOwnerPw(){
   } catch(e){/* 接続失敗は無視 */}
   // Supabase接続失敗時のみここでrenderTop
   renderTop();
+// =============================================
+// 希望休申請
+// =============================================
+
+// スタッフカラー（一覧表示用）
+const WISH_COLORS = ['#2B7FD4','#1D9E75','#E87C3E','#9B59B6','#E24B4A'];
+
+function getWishSettings(){
+  const raw = localStorage.getItem('tc_wish_settings');
+  if(raw){ try{ return JSON.parse(raw); }catch(e){} }
+  return { limitDays: 3, deadlineDay: 25 };
+}
+function saveWishSettings(){
+  const lv = parseInt(document.getElementById('wish-limit-input')?.value);
+  const dv = parseInt(document.getElementById('wish-deadline-input')?.value);
+  const cur = getWishSettings();
+  const s = { limitDays: lv>0?lv:cur.limitDays, deadlineDay: dv>0&&dv<=31?dv:cur.deadlineDay };
+  localStorage.setItem('tc_wish_settings', JSON.stringify(s));
+  updateWishCfgDisplay();
+}
+function updateWishCfgDisplay(){
+  const el = document.getElementById('wish-cfg-display'); if(!el) return;
+  const s = getWishSettings();
+  el.innerHTML = `現在の設定: 上限 <strong>${s.limitDays}日</strong>、毎月 <strong>${s.deadlineDay}日</strong>まで`;
+}
+
+function getWishData(){ // { "2025-06": { "staffId": ["2025-06-03",...], ... }, ... }
+  const raw = localStorage.getItem('tc_wish_requests');
+  if(raw){ try{ return JSON.parse(raw); }catch(e){} }
+  return {};
+}
+function saveWishData(data){
+  localStorage.setItem('tc_wish_requests', JSON.stringify(data));
+}
+
+// 翌月のmKey (YYYY-MM)
+function nextMonthKey(base){
+  const d = base || new Date();
+  const y = d.getFullYear(), m = d.getMonth()+1; // 翌月
+  const nm = m===12?1:m+1, ny = m===12?y+1:y;
+  return ny+'-'+String(nm).padStart(2,'0');
+}
+function mkToLabel(mk){ // "2025-06" → "2025年6月"
+  const [y,m] = mk.split('-');
+  return y+'年'+parseInt(m)+'月';
+}
+
+// 提出期限を過ぎているか
+function isWishExpired(){
+  const { deadlineDay } = getWishSettings();
+  const now = new Date();
+  return now.getDate() > deadlineDay;
+}
+
+// スタッフの希望休選択状態 (画面表示中のみ保持)
+let wishSel = []; // ["2025-06-03", ...]
+
+function renderWish(){
+  if(!S.role || S.role==='owner') return;
+  const s = staff.find(x=>x.id===S.role); if(!s) return;
+  const cfg = getWishSettings();
+  const mk = nextMonthKey();
+  const expired = isWishExpired();
+
+  // データ読み込み
+  const allData = getWishData();
+  const myDays = (allData[mk]?.[S.role]) || [];
+  wishSel = [...myDays];
+
+  // ヘッダー
+  document.getElementById('wish-title').textContent = mkToLabel(mk)+'の希望休';
+  document.getElementById('wish-subtitle').textContent = s.name;
+  document.getElementById('wish-deadline-disp').textContent = `毎月${cfg.deadlineDay}日まで`;
+
+  // 期限切れ・提出済みバナー
+  document.getElementById('wish-expired-bar').style.display = expired ? 'block' : 'none';
+  document.getElementById('wish-submitted-bar').style.display = (!expired && myDays.length>0) ? 'block' : 'none';
+
+  // 提出ボタン
+  const btn = document.getElementById('wish-submit-btn');
+  btn.disabled = expired;
+  btn.style.opacity = expired ? '0.4' : '1';
+
+  renderWishCal(mk, expired, cfg.limitDays);
+  updateWishCount(cfg.limitDays);
+}
+
+function renderWishCal(mk, expired, limitDays){
+  const [y,m] = mk.split('-').map(Number);
+  const label = document.getElementById('wish-cal-month');
+  label.textContent = y+'年'+m+'月';
+
+  const grid = document.getElementById('wish-cal-grid');
+  grid.innerHTML = '';
+  const firstDow = new Date(y,m-1,1).getDay();
+  const daysInMonth = new Date(y,m,0).getDate();
+
+  // 空白埋め
+  for(let i=0;i<firstDow;i++){
+    const blank = document.createElement('div'); grid.appendChild(blank);
+  }
+  for(let d=1;d<=daysInMonth;d++){
+    const dk = y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const sel = wishSel.includes(dk);
+    const dow = new Date(y,m-1,d).getDay();
+    const isSun = dow===0, isSat = dow===6;
+    const limitReached = wishSel.length >= limitDays && !sel;
+    const disabled = expired || (limitReached);
+
+    const cell = document.createElement('div');
+    cell.style.cssText = `aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;font-size:12px;font-weight:500;transition:all .12s;border:1.5px solid transparent;`;
+
+    if(sel){
+      cell.style.background = '#2B7FD4';
+      cell.style.color = '#fff';
+      cell.style.borderColor = '#185FA5';
+    } else if(disabled){
+      cell.style.background = '#f0f0f0';
+      cell.style.color = '#ccc';
+      cell.style.cursor = 'not-allowed';
+    } else {
+      cell.style.background = '#f5f5f0';
+      cell.style.color = isSun ? '#E24B4A' : isSat ? '#2B7FD4' : '#1a1a1a';
+      cell.style.cursor = 'pointer';
+    }
+
+    cell.textContent = d;
+    if(!disabled){
+      cell.addEventListener('click', ()=>{ toggleWishDay(dk, limitDays); });
+      cell.addEventListener('mouseover', ()=>{ if(!sel) cell.style.background='#e5e5e0'; });
+      cell.addEventListener('mouseout', ()=>{ if(!sel) cell.style.background='#f5f5f0'; });
+    }
+    grid.appendChild(cell);
+  }
+}
+
+function toggleWishDay(dk, limitDays){
+  const idx = wishSel.indexOf(dk);
+  if(idx>=0){
+    wishSel.splice(idx,1);
+  } else {
+    if(wishSel.length >= limitDays) return;
+    wishSel.push(dk);
+  }
+  const mk = nextMonthKey();
+  renderWishCal(mk, false, limitDays);
+  updateWishCount(limitDays);
+  document.getElementById('wish-ok').textContent = '';
+}
+
+function updateWishCount(limitDays){
+  document.getElementById('wish-count').textContent = wishSel.length;
+  const badge = document.getElementById('wish-limit-badge');
+  badge.textContent = `上限 ${limitDays}日`;
+  badge.style.background = wishSel.length >= limitDays ? '#FAEEDA' : '#EBF4FD';
+  badge.style.color = wishSel.length >= limitDays ? '#633806' : '#185FA5';
+}
+
+function submitWish(){
+  if(isWishExpired()) return;
+  const mk = nextMonthKey();
+  const data = getWishData();
+  if(!data[mk]) data[mk] = {};
+  data[mk][S.role] = [...wishSel].sort();
+  saveWishData(data);
+  document.getElementById('wish-submitted-bar').style.display = wishSel.length>0 ? 'block' : 'none';
+  document.getElementById('wish-ok').textContent = '✓ 提出しました';
+  setTimeout(()=>{ document.getElementById('wish-ok').textContent=''; }, 2500);
+}
+
+// =============================================
+// 希望休一覧（オーナー用）
+// =============================================
+let wishViewMonth = null; // Date
+
+function renderWishView(){
+  if(!wishViewMonth){
+    // デフォルト: 翌月
+    const now = new Date();
+    wishViewMonth = new Date(now.getFullYear(), now.getMonth()+1, 1);
+  }
+  const mk = mKey(wishViewMonth);
+  document.getElementById('wishview-month-label').textContent = mkToLabel(mk);
+
+  const data = getWishData();
+  const monthData = data[mk] || {};
+  const [y,m] = mk.split('-').map(Number);
+  const daysInMonth = new Date(y,m,0).getDate();
+
+  // 凡例
+  const legend = document.getElementById('wishview-legend');
+  legend.innerHTML = '';
+  staff.forEach((s,i)=>{
+    const color = WISH_COLORS[i % WISH_COLORS.length];
+    const chip = document.createElement('div');
+    chip.style.cssText = `display:flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;background:${color}20;color:${color};border:1px solid ${color}40;`;
+    chip.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;"></span>${s.name}`;
+    legend.appendChild(chip);
+  });
+
+  // カレンダー
+  const grid = document.getElementById('wishview-cal-grid');
+  grid.innerHTML = '';
+  const firstDow = new Date(y,m-1,1).getDay();
+
+  for(let i=0;i<firstDow;i++){
+    grid.appendChild(document.createElement('div'));
+  }
+  for(let d=1;d<=daysInMonth;d++){
+    const dk = y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const dow = new Date(y,m-1,d).getDay();
+    const isSun = dow===0, isSat = dow===6;
+
+    // この日を希望しているスタッフ
+    const wishers = staff.filter((s,i)=> (monthData[s.id]||[]).includes(dk));
+
+    const cell = document.createElement('div');
+    cell.style.cssText = `aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;font-size:12px;font-weight:500;position:relative;background:${wishers.length>0?'#fff':'#f5f5f0'};border:${wishers.length>0?'1px solid #e5e5e0':'1px solid transparent'};`;
+
+    const dayNum = document.createElement('div');
+    dayNum.textContent = d;
+    dayNum.style.color = isSun?'#E24B4A':isSat?'#2B7FD4':'#1a1a1a';
+    cell.appendChild(dayNum);
+
+    if(wishers.length>0){
+      const dots = document.createElement('div');
+      dots.style.cssText = 'display:flex;gap:2px;margin-top:2px;flex-wrap:wrap;justify-content:center;';
+      wishers.forEach((s,i2)=>{
+        const si = staff.findIndex(x=>x.id===s.id);
+        const color = WISH_COLORS[si % WISH_COLORS.length];
+        const dot = document.createElement('div');
+        dot.style.cssText = `width:5px;height:5px;border-radius:50%;background:${color};`;
+        dots.appendChild(dot);
+      });
+      cell.appendChild(dots);
+    }
+    grid.appendChild(cell);
+  }
+
+  // 提出状況リスト
+  const statusList = document.getElementById('wishview-status-list');
+  statusList.innerHTML = '';
+  staff.forEach((s,i)=>{
+    const color = WISH_COLORS[i % WISH_COLORS.length];
+    const days = monthData[s.id] || [];
+    const row = document.createElement('div');
+    row.style.cssText = 'background:#fff;border:0.5px solid #e5e5e0;border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:flex-start;justify-content:space-between;';
+    const daysLabel = days.length===0
+      ? '<span style="font-size:12px;color:#bbb;">未提出</span>'
+      : days.map(dk=>{ const d=parseInt(dk.split('-')[2]); return `<span style="display:inline-block;background:${color}20;color:${color};border-radius:6px;padding:2px 7px;font-size:12px;font-weight:600;margin:2px;">${d}日</span>`; }).join('');
+    row.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div style="width:32px;height:32px;border-radius:50%;background:${color}20;color:${color};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;">${s.name.slice(0,1)}</div>
+        <div>
+          <div style="font-size:14px;font-weight:500;color:#1a1a1a;">${s.name}</div>
+          <div style="font-size:11px;color:#888;">${days.length}日 提出</div>
+        </div>
+      </div>
+      <div style="text-align:right;max-width:180px;">${daysLabel}</div>`;
+    statusList.appendChild(row);
+  });
+}
+
+function wishViewMove(d){
+  if(!wishViewMonth) wishViewMonth = new Date();
+  wishViewMonth = new Date(wishViewMonth.getFullYear(), wishViewMonth.getMonth()+d, 1);
+  renderWishView();
+}
+
+// renderCfg内で希望休設定の初期値を反映（renderCfgの末尾にフック）
+const _origRenderCfg = renderCfg;
+renderCfg = function(){
+  _origRenderCfg();
+  const cfg = getWishSettings();
+  const li = document.getElementById('wish-limit-input');
+  const di = document.getElementById('wish-deadline-input');
+  if(li) li.value = cfg.limitDays;
+  if(di) di.value = cfg.deadlineDay;
+  updateWishCfgDisplay();
+};
+
 })();
 </script>
 </body>
