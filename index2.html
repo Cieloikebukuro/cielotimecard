@@ -3054,6 +3054,13 @@ function renderCfg(){
       resetMonthEl.value=prev.getFullYear()+'-'+String(prev.getMonth()+1).padStart(2,'0');
     }
   }
+  // 希望休設定の初期値を反映
+  const wishCfg = getWishSettings();
+  const wishLi = document.getElementById('wish-limit-input');
+  const wishDi = document.getElementById('wish-deadline-input');
+  if(wishLi) wishLi.value = wishCfg.limitDays;
+  if(wishDi) wishDi.value = wishCfg.deadlineDay;
+  updateWishCfgDisplay();
 }
 
 function updateTransport(id,val){const s=staff.find(x=>x.id===id);if(s){s.transport=parseInt(val)||0;sbSaveStaff(s);}}
@@ -3513,19 +3520,9 @@ function wishViewMove(d){
   renderWishView();
 }
 
-// renderCfg内で希望休設定の初期値を反映（renderCfgの末尾にフック）
-const _origRenderCfg = renderCfg;
-renderCfg = function(){
-  _origRenderCfg();
-  const cfg = getWishSettings();
-  const li = document.getElementById('wish-limit-input');
-  const di = document.getElementById('wish-deadline-input');
-  if(li) li.value = cfg.limitDays;
-  if(di) di.value = cfg.deadlineDay;
-  updateWishCfgDisplay();
-};
-
 })();
+
+// wish設定の初期値反映はrenderCfg内で直接呼ぶ（updateWishCfgDisplay）
 </script>
 </body>
 </html>
