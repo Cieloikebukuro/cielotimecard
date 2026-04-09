@@ -3246,7 +3246,13 @@ const WISH_COLORS = ['#2B7FD4','#1D9E75','#E87C3E','#9B59B6','#E24B4A'];
 
 function getWishSettings(){
   const raw = localStorage.getItem('tc_wish_settings');
-  if(raw){ try{ return JSON.parse(raw); }catch(e){} }
+  if(raw){ try{
+    const p = JSON.parse(raw);
+    return {
+      limitDays: (p.limitDays>0) ? p.limitDays : 3,
+      deadlineDay: (p.deadlineDay>0 && p.deadlineDay<=31) ? p.deadlineDay : 25
+    };
+  }catch(e){} }
   return { limitDays: 3, deadlineDay: 25 };
 }
 function saveWishSettings(){
@@ -3325,6 +3331,7 @@ function renderWish(){
 }
 
 function renderWishCal(mk, expired, limitDays){
+  limitDays = (limitDays>0) ? limitDays : 3;
   const [y,m] = mk.split('-').map(Number);
   const label = document.getElementById('wish-cal-month');
   label.textContent = y+'年'+m+'月';
