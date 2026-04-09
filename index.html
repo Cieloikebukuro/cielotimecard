@@ -781,6 +781,22 @@ async function loadFromSupabase(){
         }));
       }
     } catch(e){/* スタイリストテーブルがなければ初期データを使用 */}
+
+    // ログイン中の場合、S.roleをUUIDに更新してマイページを再描画
+    if(S.role && S.role!=='owner'){
+      // 名前でマッチしてUUIDに更新
+      const currentStaff=staff.find(x=>x.id===S.role);
+      if(!currentStaff){
+        // 旧固定ID（s1等）でログインしていた場合、名前で引き当てる
+        const byOldId=staff.find(x=>x.name===(staff.find(y=>y.id===S.role)||{}).name);
+        // それも無理ならpillの名前テキストで探す
+        const pillName=document.getElementById('role-pill')?.textContent;
+        const matched=staff.find(x=>x.name===pillName);
+        if(matched){S.role=matched.id; renderMyPage();}
+      } else {
+        renderMyPage();
+      }
+    }
     renderTop();
   } catch(e){console.error('Supabase load error:',e);}
 }
@@ -2915,9 +2931,7 @@ async function changeOwnerPw(){
 // =============================================
 // 初期化
 // =============================================
-renderTop();
-
-// 起動時にSupabaseへ自動接続
+// 起動時にSupabaseへ自動接続してからrenderTop
 (async()=>{
   // localStorageまたはURLパラメータで上書き可能（開発用）
   const params=new URLSearchParams(location.search);
@@ -2940,9 +2954,12 @@ renderTop();
       const keyEl=document.getElementById('sb-key');
       if(urlEl)urlEl.value=sbUrl;
       if(keyEl)keyEl.value=sbKey;
-      await loadFromSupabase();
+      await loadFromSupabase(); // この中でrenderTop()を呼ぶ
+      return; // Supabase接続成功時はloadFromSupabaseのrenderTopに任せる
     }
   } catch(e){/* 接続失敗は無視 */}
+  // Supabase接続失敗時のみここでrenderTop
+  renderTop();
 })();
 </script>
 </body>
