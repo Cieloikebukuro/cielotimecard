@@ -282,6 +282,16 @@
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="12" height="11" rx="2"/><path d="M5 1v4M11 1v4M2 7h12"/></svg>
       公休・夏休みを編集する
     </button>
+    <button class="edit-hol-btn" onclick="openBulkInput('my')" style="background:#EBF4FD;border-color:#B5D4F4;color:#185FA5;">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8h6M8 5v6"/></svg>
+      出勤を一括入力
+    </button>
+    <button class="edit-hol-btn" onclick="openBreakEdit()" style="background:#FEF9C3;border-color:#FDE047;color:#713F12;">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5l2.5 1.5"/></svg>
+      休憩時間を修正する
+    </button>
+    <div id="break-edit-area"></div>
+    <div id="bulk-input-area"></div>
     <button class="edit-hol-btn" onclick="openMyPinChange()" style="margin-bottom:1rem;">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="6" r="3"/><path d="M2 14c0-3 2.7-5 6-5s6 2 6 5"/></svg>
       PINを変更する
@@ -316,6 +326,11 @@
     </div>
     <div class="att-tabs" id="att-tabs"></div>
     <div class="summary-grid" id="att-summary"></div>
+    <button class="edit-hol-btn" id="att-bulk-btn" onclick="openBulkInput('att',S.attStaff)" style="background:#EBF4FD;border-color:#B5D4F4;color:#185FA5;margin-bottom:1rem;">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8h6M8 5v6"/></svg>
+      出勤を一括入力
+    </button>
+    <div id="bulk-att-area"></div>
     <div class="card" style="padding:1rem;"><div class="cal-grid" id="att-cal-grid"></div></div>
     <div id="att-edit-area"></div>
     <div id="att-log"></div>
@@ -570,9 +585,10 @@ const LEGAL_OT_H = 8;            // 法定労働時間
 function calcOtForDay(v, mon){
   const start = v.start || DS;
   const end   = v.end   || DE;
+  const breakMin = v.break !== undefined ? v.break : 60; // 休憩時間（デフォルト60分）
   const [sh,sm] = start.split(':').map(Number);
   const [eh,em] = end.split(':').map(Number);
-  const workMin = (eh*60+em) - (sh*60+sm) - 60; // 休憩1h固定
+  const workMin = (eh*60+em) - (sh*60+sm) - breakMin;
   if(workMin <= 0) return {otH:0, otPay:0};
   const workH  = workMin / 60;
   const otH    = Math.max(workH - LEGAL_OT_H, 0);
@@ -900,6 +916,241 @@ function openHolidaySetup(mode,month){
   document.getElementById('hol-sub').textContent=mode==='first'?name+'さん、公休と夏休みをまとめて設定してください':'変更する日をタップしてください';
   updateDtBar(); renderHolCal(); renderCountBar(); renderLimitBar(); showScr('holiday');
 }
+// =============================================
+// 一括入力
+// =============================================
+let bulkState = {store:null, selectedDates:new Set(), mode:'my', staffId:null};
+
+function openBulkInput(mode, staffId){
+  bulkState = {store:null, selectedDates:new Set(), mode:mode||'my', staffId:staffId||S.role};
+  const areaId = mode==='att' ? 'bulk-att-area' : 'bulk-input-area';
+  const area = document.getElementById(areaId);
+  if(!area) return;
+  if(area.innerHTML){area.innerHTML='';return;}
+  renderBulkInput(mode);
+}
+
+function renderBulkInput(mode){
+  const areaId = mode==='att' ? 'bulk-att-area' : 'bulk-input-area';
+  const area = document.getElementById(areaId);
+  if(!area) return;
+  const m = mode==='att' ? S.attMonth : S.calMonth;
+  const year=m.getFullYear(), month=m.getMonth()+1;
+  const daysInMonth=new Date(year,m.getMonth()+1,0).getDate();
+  const firstDow=new Date(year,m.getMonth(),1).getDay();
+  const DOW=['日','月','火','水','木','金','土'];
+
+  // 店舗選択ボタン
+  const cSel = bulkState.store==='cielo';
+  const gSel = bulkState.store==='glam';
+
+  // カレンダー生成
+  let calHtml = DOW.map(d=>`<div style="text-align:center;font-size:10px;font-weight:600;color:#888;padding:4px 0;">${d}</div>`).join('');
+  for(let i=0;i<firstDow;i++) calHtml+=`<div></div>`;
+  const staffId = bulkState.staffId;
+  const r = getR(staffId);
+  const mk = mKey(m);
+
+  for(let d=1;d<=daysInMonth;d++){
+    const date=new Date(year,m.getMonth(),d);
+    const dow=date.getDay();
+    const key=mk+'-'+String(d).padStart(2,'0');
+    const existing=r[key];
+    const isNonWork=existing&&NON_WORK.includes(existing.type);
+    const isSun=dow===0, isSat=dow===6;
+    const isSelected=bulkState.selectedDates.has(key);
+    const isExisting=existing&&!NON_WORK.includes(existing.type);
+
+    let bg='transparent', color=isSun?'#C00000':isSat?'#2980B9':'#1a1a1a', border='0.5px solid transparent';
+    if(isNonWork){bg='#f0f0f0';color='#bbb';}
+    else if(isSelected){
+      bg=bulkState.store==='cielo'?'#2B7FD4':bulkState.store==='glam'?'#3B8A2A':'#555';
+      color='#fff'; border='none';
+    } else if(isExisting){
+      bg=existing.type==='cielo'?'#EBF4FD':'#EAF3DE';
+      color=existing.type==='cielo'?'#185FA5':'#27500A';
+      border=existing.type==='cielo'?'0.5px solid #B5D4F4':'0.5px solid #C0DD97';
+    }
+
+    const clickable=!isNonWork&&bulkState.store;
+    calHtml+=`<div onclick="${clickable?`toggleBulkDate('${key}','${mode}')`:''}"
+      style="aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;
+      background:${bg};color:${color};border:${border};font-size:12px;font-weight:500;
+      cursor:${clickable?'pointer':'default'};${isSelected?'box-shadow:0 0 0 2px rgba(43,127,212,0.3);':''}">
+      ${d}${isExisting&&!isSelected?`<div style="font-size:7px;margin-top:1px;">${existing.type==='cielo'?'C':'G'}</div>`:''}
+    </div>`;
+  }
+
+  area.innerHTML=`
+    <div class="card" style="padding:1.25rem;margin-bottom:1rem;border-color:#B5D4F4;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div style="font-size:13px;font-weight:600;color:#1a1a1a;">出勤を一括入力</div>
+        <div style="font-size:12px;color:#888;">${year}年${month}月</div>
+      </div>
+      <div style="font-size:11px;font-weight:600;letter-spacing:0.06em;color:#888;margin-bottom:8px;">① 店舗を選択</div>
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <button onclick="setBulkStore('cielo','${mode}')"
+          style="flex:1;padding:10px;font-size:13px;font-weight:600;border-radius:10px;cursor:pointer;
+          border:1.5px solid ${cSel?'#378ADD':'#e5e5e0'};background:${cSel?'#EBF4FD':'#eee'};color:${cSel?'#0C447C':'#888'};">
+          cielo</button>
+        <button onclick="setBulkStore('glam','${mode}')"
+          style="flex:1;padding:10px;font-size:13px;font-weight:600;border-radius:10px;cursor:pointer;
+          border:1.5px solid ${gSel?'#639922':'#e5e5e0'};background:${gSel?'#EAF3DE':'#eee'};color:${gSel?'#27500A':'#888'};">
+          glam</button>
+      </div>
+      <div style="font-size:11px;font-weight:600;letter-spacing:0.06em;color:#888;margin-bottom:8px;">
+        ② 日付をタップして選択
+        ${bulkState.selectedDates.size>0?`<span style="color:#2B7FD4;margin-left:8px;">${bulkState.selectedDates.size}日選択中</span>`:''}
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:12px;">${calHtml}</div>
+      <div style="font-size:11px;color:#BA7517;background:#FFF8EC;border-radius:8px;padding:8px 12px;margin-bottom:12px;">
+        ⚠️ 公休・年末年始・欠勤の日は選択できません
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="confirmBulkInput('${mode}')"
+          ${bulkState.selectedDates.size===0||!bulkState.store?'disabled':''}
+          style="flex:1;padding:11px;font-size:14px;font-weight:600;border:none;border-radius:10px;cursor:pointer;
+          background:${bulkState.selectedDates.size>0&&bulkState.store?'#2B7FD4':'#ccc'};color:#fff;">
+          ${bulkState.selectedDates.size>0?`${bulkState.selectedDates.size}日分を確定`:'確定する'}</button>
+        <button onclick="closeBulkInput('${mode}')"
+          style="padding:11px 16px;font-size:13px;font-weight:500;background:#eee;color:#888;border:0.5px solid #ddd;border-radius:10px;cursor:pointer;">
+          キャンセル</button>
+      </div>
+      <div id="bulk-ok-${mode}" style="font-size:12px;min-height:18px;margin-top:8px;"></div>
+    </div>`;
+}
+
+function setBulkStore(store, mode){
+  bulkState.store=store;
+  bulkState.selectedDates=new Set();
+  renderBulkInput(mode);
+}
+
+function toggleBulkDate(key, mode){
+  if(!bulkState.store)return;
+  if(bulkState.selectedDates.has(key)) bulkState.selectedDates.delete(key);
+  else bulkState.selectedDates.add(key);
+  renderBulkInput(mode);
+}
+
+function closeBulkInput(mode){
+  const areaId=mode==='att'?'bulk-att-area':'bulk-input-area';
+  const area=document.getElementById(areaId);
+  if(area)area.innerHTML='';
+  bulkState={store:null,selectedDates:new Set(),mode:'my',staffId:null};
+}
+
+async function confirmBulkInput(mode){
+  if(!bulkState.store||bulkState.selectedDates.size===0)return;
+  const msg=document.getElementById('bulk-ok-'+mode);
+  msg.style.color='#888'; msg.textContent='保存中...';
+  const staffId=bulkState.staffId;
+  const r=getR(staffId);
+  let count=0;
+  for(const key of bulkState.selectedDates){
+    const data={type:bulkState.store,start:DS,end:DE,reason:'',timeReason:''};
+    r[key]=data;
+    await sbSaveRecord(staffId,key,data);
+    count++;
+  }
+  msg.style.color='#1D9E75';
+  msg.textContent=`✓ ${count}日分を保存しました`;
+  // 時間変更の警告を表示
+  setTimeout(()=>{
+    const areaId=mode==='att'?'bulk-att-area':'bulk-input-area';
+    const area=document.getElementById(areaId);
+    if(area) area.innerHTML=`
+      <div style="background:#FFF8EC;border:1px solid #FAC775;border-radius:12px;padding:1rem 1.25rem;margin-bottom:1rem;">
+        <div style="font-size:13px;font-weight:600;color:#BA7517;margin-bottom:6px;">✓ ${count}日分を入力しました</div>
+        <div style="font-size:12px;color:#8B6000;line-height:1.7;">
+          デフォルト時間（10:00〜19:30）で登録しました。<br>
+          <strong>遅刻・早退・残業がある日は、カレンダーから個別に修正してください。</strong>
+        </div>
+        <button onclick="closeBulkInput('${mode}')" style="margin-top:10px;width:100%;padding:9px;font-size:13px;font-weight:600;background:#FAC775;color:#633806;border:none;border-radius:8px;cursor:pointer;">閉じる</button>
+      </div>`;
+    bulkState={store:null,selectedDates:new Set(),mode:'my',staffId:null};
+    if(mode==='att') renderAtt();
+    else renderMyPage();
+  },500);
+}
+
+// =============================================
+// 休憩時間修正
+// =============================================
+function openBreakEdit(){
+  const area=document.getElementById('break-edit-area');
+  if(area.innerHTML){area.innerHTML='';return;}
+  const m=S.calMonth;
+  const mk=mKey(m);
+  const r=getR(S.role);
+  const DOW=['日','月','火','水','木','金','土'];
+  // その月の出勤日を取得
+  const workDays=Object.entries(r)
+    .filter(([k,v])=>k.startsWith(mk)&&v.type&&!NON_WORK.includes(v.type))
+    .sort(([a],[b])=>a<b?-1:1);
+
+  if(workDays.length===0){
+    area.innerHTML=`<div class="card" style="padding:1.25rem;margin-bottom:1rem;text-align:center;color:#888;font-size:13px;">この月の出勤記録がありません</div>`;
+    return;
+  }
+
+  const rows=workDays.map(([k,v])=>{
+    const [,mo,d]=k.split('-');
+    const date=new Date(parseInt(mk.split('-')[0]),parseInt(mo)-1,parseInt(d));
+    const dow=DOW[date.getDay()];
+    const bMin=v.break!==undefined?v.break:60;
+    const changed=bMin!==60;
+    const storeLabel=v.type==='cielo'?'C':'G';
+    const storeColor=v.type==='cielo'?'#185FA5':'#27500A';
+    const storeBg=v.type==='cielo'?'#EBF4FD':'#EAF3DE';
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:0.5px solid #e5e5e0;${changed?'background:#FFFBEB;':''}">
+        <div style="display:flex;align-items:center;gap:6px;min-width:70px;">
+          <span style="font-size:13px;font-weight:500;color:#1a1a1a;">${parseInt(d)}日</span>
+          <span style="font-size:11px;color:#888;">${dow}</span>
+          <span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;background:${storeBg};color:${storeColor};">${storeLabel}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex:1;">
+          <input type="number" value="${bMin}" min="0" max="240"
+            style="width:64px;padding:5px 8px;font-size:13px;font-family:'DM Mono',monospace;border:0.5px solid ${changed?'#EAB308':'#ccc'};border-radius:8px;background:${changed?'#FFFBEB':'#f5f5f0'};color:${changed?'#713F12':'#1a1a1a'};text-align:right;"
+            onchange="updateBreak('${k}',this)"
+          />
+          <span style="font-size:12px;color:#888;">分</span>
+          ${changed?`<span style="font-size:11px;color:#713F12;font-weight:600;">（規定60分より${bMin<60?'短い':'長い'}）</span>`:''}
+        </div>
+      </div>`;
+  }).join('');
+
+  area.innerHTML=`
+    <div class="card" style="overflow:hidden;margin-bottom:1rem;border-color:#FDE047;">
+      <div style="padding:12px 14px;border-bottom:0.5px solid #e5e5e0;background:#FFFBEB;">
+        <div style="font-size:13px;font-weight:600;color:#713F12;">休憩時間の修正</div>
+        <div style="font-size:11px;color:#A16207;margin-top:2px;">規定：60分　変更があった日は黄色で表示</div>
+      </div>
+      ${rows}
+      <div style="padding:12px 14px;">
+        <button onclick="document.getElementById('break-edit-area').innerHTML='';renderMyPage()"
+          style="width:100%;padding:9px;font-size:13px;font-weight:600;background:#FDE047;color:#713F12;border:none;border-radius:8px;cursor:pointer;">
+          閉じる
+        </button>
+      </div>
+    </div>`;
+}
+
+async function updateBreak(key, el){
+  const val=parseInt(el.value);
+  if(isNaN(val)||val<0||val>240)return;
+  const r=getR(S.role);
+  if(!r[key])return;
+  r[key].break=val;
+  await sbSaveRecord(S.role,key,r[key]);
+  // 色をリアルタイムで更新
+  const changed=val!==60;
+  el.style.borderColor=changed?'#EAB308':'#ccc';
+  el.style.background=changed?'#FFFBEB':'#f5f5f0';
+  el.style.color=changed?'#713F12':'#1a1a1a';
+}
+
 function openMyPinChange(){
   const area=document.getElementById('my-pin-area');
   if(area.innerHTML){area.innerHTML='';return;}
@@ -1199,6 +1450,7 @@ function openDayEdit(key,day){
     const savedEnd   = v.end   || DE;
     const timeChanged = (savedStart !== DS || savedEnd !== DE) && (isCielo || isGlam);
     const savedReason = v.timeReason || '';
+    const breakChanged = breakMin !== 60;
     document.getElementById('day-edit-area').innerHTML=`
       <div class="day-edit">
         <div style="font-size:15px;font-weight:500;color:#1a1a1a;margin-bottom:1rem;">${parseInt(mo)}月${parseInt(d)}日</div>
@@ -1210,6 +1462,14 @@ function openDayEdit(key,day){
         <div id="time-fields" style="${isAbsent||(!isCielo&&!isGlam)?'display:none;':''}">
           <div class="time-row"><label>開始</label><input class="time-input" type="time" id="edit-start" value="${savedStart}" oninput="checkTimeChange('${key}')" /></div>
           <div class="time-row"><label>終了</label><input class="time-input" type="time" id="edit-end" value="${savedEnd}" oninput="checkTimeChange('${key}')" /></div>
+          <div class="time-row" style="margin-top:2px;">
+            <label>休憩</label>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <input class="time-input" type="number" id="edit-break" value="${breakMin}" min="0" max="240" style="width:70px;${breakChanged?'border-color:#E24B4A;background:#FCEBEB;color:#A32D2D;':''}" oninput="checkBreakChange(this)" />
+              <span style="font-size:13px;color:#888;">分</span>
+              ${breakChanged?`<span style="font-size:11px;color:#E24B4A;font-weight:600;">（規定60分より短い）</span>`:`<span style="font-size:11px;color:#aaa;">規定60分</span>`}
+            </div>
+          </div>
           <div id="time-reason-area" style="${timeChanged?'':'display:none;'}">
             <div style="font-size:11px;font-weight:600;letter-spacing:0.06em;color:#888;margin:8px 0 6px;">変更理由</div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -1321,6 +1581,19 @@ function checkTimeChange(key){
     });
   }
 }
+function checkBreakChange(el){
+  const val=parseInt(el.value)||0;
+  const changed=val!==60;
+  el.style.borderColor=changed?'#E24B4A':'#ccc';
+  el.style.background=changed?'#FCEBEB':'#eee';
+  el.style.color=changed?'#A32D2D':'#1a1a1a';
+  // 隣の説明テキストを更新
+  const span=el.nextElementSibling?.nextElementSibling;
+  if(span){
+    span.textContent=changed?`（規定60分より${val<60?'短い':'長い'}）`:'規定60分';
+    span.style.color=changed?'#E24B4A':'#aaa';
+  }
+}
 function setTimeReason(reason, el){
   const hv = document.getElementById('time-reason-val');
   if(hv) hv.value = reason;
@@ -1357,7 +1630,7 @@ function renderAtt(){
   staff.filter(s=>!s.leave).forEach(s=>{
     const b=document.createElement('button'); b.className='stab'+(S.attStaff===s.id?' on':'');
     b.textContent=s.name;
-    b.onclick=()=>{S.attStaff=s.id;S.attEditDay=null;document.getElementById('att-edit-area').innerHTML='';renderAtt();};
+    b.onclick=()=>{S.attStaff=s.id;S.attEditDay=null;document.getElementById('att-edit-area').innerHTML='';document.getElementById('bulk-att-area').innerHTML='';bulkState={store:null,selectedDates:new Set(),mode:'my',staffId:null};renderAtt();};
     tabs.appendChild(b);
   });
   const s=staff.find(x=>x.id===S.attStaff); if(!s)return;
@@ -1398,15 +1671,21 @@ function renderAtt(){
   else{
     sorted.forEach(([k,v])=>{
       const d=parseInt(k.split('-')[2]);
+      const bMin=v.break!==undefined?v.break:60;
+      const breakChanged=bMin!==60;
       const tag=v.type==='cielo'?'<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#EBF4FD;color:#185FA5;">cielo</span>':'<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#EAF3DE;color:#3B6D11;">glam</span>';
       const timeStr=s.isHourly
-        ? `${v.start||'--:--'} – ${v.end||'--:--'}（休憩${v.break!==undefined?v.break:60}分）`
-        : `${v.start||DS} – ${v.end||DE}`;
-      logHtml+=`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:0.5px solid #e5e5e0;cursor:pointer;" onclick="openAttEdit('${k}',${d})">
+        ? `${v.start||'--:--'} – ${v.end||'--:--'}（休憩${bMin}分）`
+        : `${v.start||DS} – ${v.end||DE}（休憩${bMin}分）`;
+      const breakWarn=breakChanged
+        ? `<span style="font-size:10px;font-weight:600;padding:1px 6px;border-radius:4px;background:#FFFBEB;color:#713F12;border:0.5px solid #EAB308;">休憩${bMin}分</span>`
+        : '';
+      logHtml+=`<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:0.5px solid #e5e5e0;cursor:pointer;${breakChanged?'background:#FFFBEB;':''}" onclick="openAttEdit('${k}',${d})">
         <span style="font-size:13px;font-weight:500;min-width:36px;">${d}日</span>${tag}
-        <span style="font-size:12px;font-family:'DM Mono',monospace;color:#888;margin-left:auto;">${timeStr}</span>
+        ${breakWarn}
+        <span style="font-size:12px;font-family:'DM Mono',monospace;color:${breakChanged?'#713F12':'#888'};margin-left:auto;">${v.start||DS} – ${v.end||DE}</span>
         <span style="font-size:11px;color:#2B7FD4;font-weight:600;">編集</span>
-      </div>`;
+      </div>`; 
     });
     abSorted.forEach(([k,v])=>{
       const d=parseInt(k.split('-')[2]);
@@ -1439,6 +1718,7 @@ function openAttEdit(key, day){
   const breakMin=v.break!==undefined?v.break:60;
 
   // 公休系はオーナーからも変更できるよう全ボタン表示
+  const breakChanged = breakMin !== 60;
   const timeSection = s.isHourly ? `
     <div id="att-time-fields" style="${isAbsent||isOff?'display:none;':''}">
       <div class="time-row"><label>開始</label><input class="time-input" type="time" id="att-edit-start" value="${v.start||defStart}" /></div>
@@ -1454,6 +1734,16 @@ function openAttEdit(key, day){
     <div id="att-time-fields" style="${isAbsent||isOff?'display:none;':''}">
       <div class="time-row"><label>開始</label><input class="time-input" type="time" id="att-edit-start" value="${v.start||DS}" /></div>
       <div class="time-row"><label>終了</label><input class="time-input" type="time" id="att-edit-end" value="${v.end||DE}" /></div>
+      <div class="time-row" style="margin-top:2px;">
+        <label>休憩</label>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <input class="time-input" type="number" id="att-edit-break" value="${breakMin}" min="0" max="240"
+            style="width:70px;${breakChanged?'border-color:#E24B4A;background:#FCEBEB;color:#A32D2D;':''}"
+            oninput="checkBreakChange(this)" />
+          <span style="font-size:13px;color:#888;">分</span>
+          ${breakChanged?`<span style="font-size:11px;color:#E24B4A;font-weight:600;">（規定60分より${breakMin<60?'短い':'長い'}）</span>`:`<span style="font-size:11px;color:#aaa;">規定60分</span>`}
+        </div>
+      </div>
     </div>`;
 
   document.getElementById('att-edit-area').innerHTML=`
