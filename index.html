@@ -326,10 +326,17 @@
     </div>
     <div class="att-tabs" id="att-tabs"></div>
     <div class="summary-grid" id="att-summary"></div>
-    <button class="edit-hol-btn" id="att-bulk-btn" onclick="openBulkInput('att',S.attStaff)" style="background:#EBF4FD;border-color:#B5D4F4;color:#185FA5;margin-bottom:1rem;">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8h6M8 5v6"/></svg>
-      出勤を一括入力
-    </button>
+    <div style="display:flex;gap:8px;margin-bottom:1rem;">
+      <button class="edit-hol-btn" id="att-bulk-btn" onclick="openBulkInput('att',S.attStaff)" style="background:#EBF4FD;border-color:#B5D4F4;color:#185FA5;margin-bottom:0;flex:1;">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8h6M8 5v6"/></svg>
+        出勤を一括入力
+      </button>
+      <button class="edit-hol-btn" onclick="openAttReset()" style="background:#FCEBEB;border-color:#F7C1C1;color:#A32D2D;margin-bottom:0;flex:1;">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3l10 10M13 3L3 13"/></svg>
+        この月の記録をリセット
+      </button>
+    </div>
+    <div id="att-reset-area"></div>
     <div id="bulk-att-area"></div>
     <div class="card" style="padding:1rem;"><div class="cal-grid" id="att-cal-grid"></div></div>
     <div id="att-edit-area"></div>
@@ -498,6 +505,28 @@
       <input class="fi" type="password" id="new-owner-pw" placeholder="新しいパスワード" style="margin-bottom:10px;" />
       <button class="btn-p btn-sm" onclick="changeOwnerPw()">変更する</button>
       <div class="ok-msg" id="pw-ok"></div>
+    </div>
+
+    <!-- データ管理 -->
+    <div class="sec-label" style="margin-bottom:10px;margin-top:1.5rem;">データ管理</div>
+    <div class="cfg-block">
+      <div class="block-title">勤怠データのリセット</div>
+      <div style="font-size:12px;color:#888;margin-bottom:12px;line-height:1.7;">
+        指定した月の勤怠記録を削除します。<br>
+        <span style="color:#E24B4A;font-weight:600;">⚠️ 削除したデータは復元できません</span>
+      </div>
+      <!-- スタッフ選択 -->
+      <div style="font-size:11px;font-weight:600;letter-spacing:.06em;color:#888;margin-bottom:6px;">対象スタッフ</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;" id="reset-staff-btns"></div>
+      <!-- 月選択 -->
+      <div style="font-size:11px;font-weight:600;letter-spacing:.06em;color:#888;margin-bottom:6px;">対象月</div>
+      <input type="month" id="reset-month" class="fi" style="margin-bottom:12px;" />
+      <!-- 実行ボタン -->
+      <button onclick="confirmResetData()"
+        style="width:100%;padding:11px;font-size:13px;font-weight:600;background:#FCEBEB;color:#A32D2D;border:1px solid #F7C1C1;border-radius:10px;cursor:pointer;margin-bottom:6px;">
+        選択した月のデータを削除する
+      </button>
+      <div id="reset-ok" style="font-size:12px;min-height:18px;"></div>
     </div>
 
     <!-- Supabase接続 -->
@@ -1638,6 +1667,65 @@ async function clearDay(key){
 // =============================================
 // 勤怠管理（オーナー）
 // =============================================
+// =============================================
+// 勤怠リセット（管理者）
+// =============================================
+function openAttReset(){
+  const area=document.getElementById('att-reset-area');
+  if(area.innerHTML){area.innerHTML='';return;}
+  const m=S.attMonth;
+  const s=staff.find(x=>x.id===S.attStaff);
+  if(!s)return;
+  const mk=mKey(m);
+  const r=getR(s.id);
+  const entries=Object.entries(r).filter(([k])=>k.startsWith(mk));
+  const count=entries.length;
+  area.innerHTML=`
+    <div class="card" style="padding:1.25rem;margin-bottom:1rem;border-color:#F7C1C1;background:#FCEBEB;">
+      <div style="font-size:13px;font-weight:600;color:#A32D2D;margin-bottom:8px;">
+        ⚠️ ${s.name}　${m.getFullYear()}年${m.getMonth()+1}月の記録をリセット
+      </div>
+      <div style="font-size:12px;color:#501313;margin-bottom:14px;line-height:1.6;">
+        出勤・公休・欠勤など<strong>${count}件</strong>の記録をすべて削除します。<br>
+        この操作は取り消せません。
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="confirmAttReset()"
+          style="flex:1;padding:11px;font-size:14px;font-weight:600;background:#E24B4A;color:#fff;border:none;border-radius:10px;cursor:pointer;">
+          削除する（${count}件）
+        </button>
+        <button onclick="document.getElementById('att-reset-area').innerHTML=''"
+          style="padding:11px 16px;font-size:13px;font-weight:500;background:#eee;color:#888;border:0.5px solid #ddd;border-radius:10px;cursor:pointer;">
+          キャンセル
+        </button>
+      </div>
+      <div id="att-reset-ok" style="font-size:12px;min-height:18px;margin-top:8px;"></div>
+    </div>`;
+}
+
+async function confirmAttReset(){
+  const msg=document.getElementById('att-reset-ok');
+  msg.style.color='#888'; msg.textContent='削除中...';
+  const m=S.attMonth;
+  const mk=mKey(m);
+  const s=staff.find(x=>x.id===S.attStaff);
+  if(!s)return;
+  const r=getR(s.id);
+  const keys=Object.keys(r).filter(k=>k.startsWith(mk));
+  let count=0;
+  for(const key of keys){
+    delete r[key];
+    await sbDeleteRecord(s.id, key);
+    count++;
+  }
+  msg.style.color='#1D9E75';
+  msg.textContent=`✓ ${count}件の記録を削除しました`;
+  setTimeout(()=>{
+    document.getElementById('att-reset-area').innerHTML='';
+    renderAtt();
+  },1500);
+}
+
 function attMove(d){S.attMonth=new Date(S.attMonth.getFullYear(),S.attMonth.getMonth()+d,1);S.attEditDay=null;document.getElementById('att-edit-area').innerHTML='';renderAtt();}
 function renderAtt(){
   const m=S.attMonth;
@@ -2831,6 +2919,33 @@ function renderCfg(){
   if(offLimit===9){document.getElementById('lopt-9').classList.add('sel');ci.disabled=true;}
   else if(offLimit===null){document.getElementById('lopt-inf').classList.add('sel');ci.disabled=true;}
   else{document.getElementById('lopt-custom').classList.add('sel');ci.disabled=false;ci.value=offLimit;}
+
+  // リセット用スタッフボタン
+  const resetBtns=document.getElementById('reset-staff-btns');
+  if(resetBtns){
+    resetBtns.innerHTML='';
+    // 全スタッフボタン
+    const allBtn=document.createElement('button');
+    allBtn.id='reset-staff-all';
+    allBtn.textContent='全スタッフ';
+    allBtn.style.cssText='padding:7px 14px;font-size:12px;font-weight:600;border-radius:20px;cursor:pointer;border:0.5px solid #ddd;background:#eee;color:#888;';
+    allBtn.onclick=()=>selectResetStaff('all');
+    resetBtns.appendChild(allBtn);
+    staff.forEach(s=>{
+      const b=document.createElement('button');
+      b.id='reset-staff-'+s.id;
+      b.textContent=s.name;
+      b.style.cssText='padding:7px 14px;font-size:12px;font-weight:600;border-radius:20px;cursor:pointer;border:0.5px solid #ddd;background:#eee;color:#888;';
+      b.onclick=()=>selectResetStaff(s.id);
+      resetBtns.appendChild(b);
+    });
+    // デフォルト月を先月に設定
+    const resetMonthEl=document.getElementById('reset-month');
+    if(resetMonthEl&&!resetMonthEl.value){
+      const prev=new Date(); prev.setMonth(prev.getMonth()-1);
+      resetMonthEl.value=prev.getFullYear()+'-'+String(prev.getMonth()+1).padStart(2,'0');
+    }
+  }
 }
 
 function updateTransport(id,val){const s=staff.find(x=>x.id===id);if(s){s.transport=parseInt(val)||0;sbSaveStaff(s);}}
@@ -2838,6 +2953,60 @@ function toggleHourly(id){const s=staff.find(x=>x.id===id);if(s){s.isHourly=!s.i
 function updateHourlyWage(id,val){const s=staff.find(x=>x.id===id);if(s){s.hourlyWage=parseInt(val)||1200;sbSaveStaff(s);}}
 function updateDefaultTime(id,field,val){const s=staff.find(x=>x.id===id);if(s){if(field==='start')s.defaultStart=val;else s.defaultEnd=val;sbSaveStaff(s);}}
 function toggleLeave(id){const s=staff.find(x=>x.id===id);if(s){s.leave=!s.leave;sbSaveStaff(s);}renderCfg();}
+
+// =============================================
+// データリセット
+// =============================================
+let resetTargetStaff = null; // null=全スタッフ, staffId=特定スタッフ
+
+function selectResetStaff(id){
+  resetTargetStaff = id==='all' ? null : id;
+  // ボタンの選択状態を更新
+  document.querySelectorAll('[id^="reset-staff-"]').forEach(b=>{
+    const isSelected = (id==='all' && b.id==='reset-staff-all') || b.id==='reset-staff-'+id;
+    b.style.borderColor = isSelected ? '#E24B4A' : '#ddd';
+    b.style.background  = isSelected ? '#FCEBEB' : '#eee';
+    b.style.color       = isSelected ? '#A32D2D' : '#888';
+  });
+}
+
+async function confirmResetData(){
+  const monthEl=document.getElementById('reset-month');
+  const msg=document.getElementById('reset-ok');
+  if(!monthEl?.value){msg.style.color='#E24B4A';msg.textContent='対象月を選択してください';return;}
+  if(resetTargetStaff===undefined||resetTargetStaff===null&&!document.getElementById('reset-staff-all')?.style.borderColor.includes('224')){
+    msg.style.color='#E24B4A';msg.textContent='対象スタッフを選択してください';return;
+  }
+
+  const ym=monthEl.value; // "2026-04"
+  const targetName = resetTargetStaff
+    ? (staff.find(x=>x.id===resetTargetStaff)?.name||'')
+    : '全スタッフ';
+
+  if(!confirm(`【確認】${ym.replace('-','年')}月の${targetName}の勤怠データを削除します。\nこの操作は取り消せません。本当に削除しますか？`))return;
+
+  msg.style.color='#888'; msg.textContent='削除中...';
+  try{
+    const targets = resetTargetStaff ? [resetTargetStaff] : staff.map(s=>s.id);
+    let totalDeleted=0;
+    for(const staffId of targets){
+      // ローカルデータから削除
+      const r=getR(staffId);
+      Object.keys(r).forEach(k=>{if(k.startsWith(ym))delete r[k];});
+      // Supabaseから削除
+      if(sbConnected){
+        await sbFetch(`tc_records?staff_id=eq.${staffId}&date=gte.${ym}-01&date=lte.${ym}-31`,{method:'DELETE'});
+        totalDeleted++;
+      }
+    }
+    msg.style.color='#1D9E75';
+    msg.textContent=`✓ ${ym.replace('-','年')}月の${targetName}のデータを削除しました`;
+    renderTop();
+  }catch(e){
+    msg.style.color='#E24B4A';
+    msg.textContent='削除に失敗しました: '+e.message;
+  }
+}
 
 async function addStaffMember(){
   const name=document.getElementById('add-staff-name').value.trim();
