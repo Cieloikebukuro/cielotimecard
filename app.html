@@ -3244,6 +3244,8 @@ async function changeOwnerPw(){
   } catch(e){/* 接続失敗は無視 */}
   // Supabase接続失敗時のみここでrenderTop
   renderTop();
+})();
+
 // =============================================
 // 希望休申請
 // =============================================
@@ -3519,8 +3521,6 @@ function wishViewMove(d){
   wishViewMonth = new Date(wishViewMonth.getFullYear(), wishViewMonth.getMonth()+d, 1);
   renderWishView();
 }
-
-})();
 
 // wish設定の初期値反映はrenderCfg内で直接呼ぶ（updateWishCfgDisplay）
 </script>
