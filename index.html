@@ -719,6 +719,12 @@ ALTER TABLE settings DISABLE ROW LEVEL SECURITY;</pre>
     <!-- 提出状況 -->
     <div style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:#888;text-transform:uppercase;margin-bottom:10px;margin-top:8px;">提出状況</div>
     <div id="wishview-status-list"></div>
+
+    <!-- PDF出力ボタン -->
+    <button onclick="exportWishPDF()" style="width:100%;padding:13px;font-size:14px;font-weight:600;background:#1D6F42;color:#fff;border:none;border-radius:12px;cursor:pointer;margin-top:1rem;display:flex;align-items:center;justify-content:center;gap:8px;">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l5-8 5 8"/><path d="M1 14h14"/><path d="M8 4v10"/></svg>
+      PDF出力（希望休一覧）
+    </button>
   </div>
 
 </div>
@@ -1381,16 +1387,14 @@ function renderLimitBar(){
 function renderHolCal(){
   const m=S.holMonth, daysInMonth=new Date(m.getFullYear(),m.getMonth()+1,0).getDate();
   const firstDow=new Date(m.getFullYear(),m.getMonth(),1).getDay();
-  const today=new Date(), dows=['日','月','火','水','木','金','土'];
+  const dows=['日','月','火','水','木','金','土'];
   let html=dows.map(d=>'<div class="cal-dow">'+d+'</div>').join('');
   for(let i=0;i<firstDow;i++)html+='<div class="hcal-day empty"></div>';
   const atLimit=offLimit!==null&&countOffInHolData()>=offLimit;
   for(let d=1;d<=daysInMonth;d++){
-    const date=new Date(m.getFullYear(),m.getMonth(),d);
-    const isPast=date<new Date(today.getFullYear(),today.getMonth(),today.getDate());
     const t=S.holData[d], isSumSel=S.curDayType==='summer'&&S.summerSel.includes(d);
     const isBlocked=S.curDayType==='off'&&!t&&atLimit;
-    let cls='hcal-day'+(isPast?' past':'')+(t?' '+TYPE_CLS[t]:'')+(isSumSel?' summer-sel':'')+(isBlocked?' blocked':'');
+    let cls='hcal-day'+(t?' '+TYPE_CLS[t]:'')+(isSumSel?' summer-sel':'')+(isBlocked?' blocked':'');
     html+=`<div class="${cls}" onclick="toggleHolDay(${d})"><div style="font-size:12px;">${d}</div>${t?'<div style="font-size:8px;">'+TYPE_LABEL[t]+'</div>':''}</div>`;
   }
   document.getElementById('hcal-grid').innerHTML=html;
@@ -3619,6 +3623,165 @@ function wishViewMove(d){
   if(!wishViewMonth) wishViewMonth = new Date();
   wishViewMonth = new Date(wishViewMonth.getFullYear(), wishViewMonth.getMonth()+d, 1);
   renderWishView();
+}
+
+function exportWishPDF(){
+  if(!wishViewMonth) wishViewMonth = new Date();
+  const mk = mKey(wishViewMonth);
+  const [y,m] = mk.split('-').map(Number);
+  const label = mkToLabel(mk);
+  const daysInMonth = new Date(y,m,0).getDate();
+  const firstDow = new Date(y,m-1,1).getDay();
+  const data = getWishData();
+  const monthData = data[mk] || {};
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}/${String(today.getMonth()+1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}`;
+  const DOW_JP = ['日','月','火','水','木','金','土'];
+
+  // スタッフカラー定義
+  const staffColors = ['#2B7FD4','#1D9E75','#E87C3E','#9B59B6','#E24B4A'];
+  const staffDark   = ['#185FA5','#0F6E56','#993C1D','#6C3483','#922B21'];
+
+  // この日を希望しているスタッフ取得
+  function getWishersForDay(d){
+    const dk = y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    return staff.map((s,si)=>{
+      const raw = (monthData[s.id]||[]);
+      const items = raw.map(x=>typeof x==='string'?{dk:x,priority:false}:x);
+      const item = items.find(x=>x.dk===dk);
+      return item ? {name:s.name, priority:item.priority, color:staffColors[si%staffColors.length], dark:staffDark[si%staffDark.length]} : null;
+    }).filter(Boolean);
+  }
+
+  // カレンダーセルHTML生成
+  function buildCellHtml(d, wishers, dow){
+    const hasPri = wishers.some(w=>w.priority);
+    const priLine = hasPri ? '<div style="position:absolute;top:0;left:0;right:0;height:3px;background:#F59E0B;"></div>' : '';
+    const dayColor = dow===0?'#E24B4A':dow===6?'#2B7FD4':'#374151';
+    const cellBg = hasPri?'#FFFBEB':'#fff';
+    let badgesHtml = '';
+    if(wishers.length > 2){
+      // 3人以上：小バッジ横並び＋人数
+      const badges = wishers.map(w=>{
+        const bg = w.priority?'#FEF3C7':`${w.color}18`;
+        const bc = w.priority?'#FDE68A':`${w.color}40`;
+        const tc = w.priority?'#92400E':w.dark;
+        const star = w.priority?'<span style="font-size:7px;">⭐</span>':'';
+        return `<span style="display:inline-flex;align-items:center;gap:1px;padding:1px 3px;border-radius:3px;background:${bg};border:0.5px solid ${bc};margin:1px;">${star}<span style="font-size:8px;font-weight:600;color:${tc};">${w.name}</span></span>`;
+      }).join('');
+      badgesHtml = `<div style="display:flex;flex-wrap:wrap;">${badges}</div><div style="font-size:8px;color:#9ca3af;text-align:right;">${wishers.length}名</div>`;
+    } else {
+      // 2人以下：縦並びバッジ
+      badgesHtml = wishers.map(w=>{
+        const bg = w.priority?'#FEF3C7':`${w.color}18`;
+        const bc = w.priority?'#FDE68A':`${w.color}40`;
+        const tc = w.priority?'#92400E':w.dark;
+        const star = w.priority?'<span style="font-size:8px;">⭐</span>':'';
+        return `<div style="display:flex;align-items:center;gap:2px;padding:1px 4px;border-radius:4px;background:${bg};border:0.5px solid ${bc};margin-bottom:2px;">${star}<span style="font-size:9px;font-weight:600;color:${tc};">${w.name}</span></div>`;
+      }).join('');
+    }
+    return `<td style="vertical-align:top;padding:0;border-right:0.5px solid #e5e7eb;border-bottom:0.5px solid #e5e7eb;min-width:52px;min-height:62px;background:${cellBg};position:relative;">
+      ${priLine}
+      <div style="padding:4px 3px 3px;">
+        <div style="font-size:11px;font-weight:600;color:${dayColor};text-align:right;padding-right:2px;margin-bottom:2px;">${d}</div>
+        ${badgesHtml}
+      </div>
+    </td>`;
+  }
+
+  // 凡例HTML
+  const legendHtml = staff.map((s,si)=>{
+    const color = staffColors[si%staffColors.length];
+    const dark  = staffDark[si%staffDark.length];
+    return `<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;background:${color}18;color:${dark};border:0.5px solid ${color}40;font-size:11px;font-weight:600;margin:2px;">
+      <span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;"></span>${s.name}</span>`;
+  }).join('') + `<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;background:#FEF3C7;color:#92400E;border:0.5px solid #FDE68A;font-size:11px;font-weight:600;margin:2px;">
+    <span style="width:10px;height:10px;border-radius:2px;background:#F59E0B;display:inline-block;font-size:7px;color:#fff;text-align:center;line-height:10px;">★</span>優先希望休</span>`;
+
+  // カレンダーテーブル構築
+  let calRows = '<tr>';
+  DOW_JP.forEach((d,i)=>{
+    const c = i===0?'#EF4444':i===6?'#3B82F6':'#6b7280';
+    calRows += `<th style="text-align:center;padding:6px 2px;font-size:10px;font-weight:600;color:${c};background:#f9fafb;border-right:0.5px solid #e5e7eb;border-bottom:0.5px solid #e5e7eb;">${d}</th>`;
+  });
+  calRows += '</tr><tr>';
+  for(let i=0;i<firstDow;i++) calRows += '<td style="border-right:0.5px solid #e5e7eb;border-bottom:0.5px solid #e5e7eb;background:#fafafa;"></td>';
+  for(let d=1;d<=daysInMonth;d++){
+    const dow = (firstDow+d-1)%7;
+    if(d>1 && dow===0) calRows += '</tr><tr>';
+    calRows += buildCellHtml(d, getWishersForDay(d), dow);
+  }
+  const remain = (7-(firstDow+daysInMonth)%7)%7;
+  for(let i=0;i<remain;i++) calRows += '<td style="border-right:0.5px solid #e5e7eb;border-bottom:0.5px solid #e5e7eb;background:#fafafa;"></td>';
+  calRows += '</tr>';
+
+  // 提出状況まとめHTML
+  const summaryHtml = staff.map((s,si)=>{
+    const color = staffColors[si%staffColors.length];
+    const dark  = staffDark[si%staffDark.length];
+    const raw = (monthData[s.id]||[]);
+    const items = raw.map(x=>typeof x==='string'?{dk:x,priority:false}:x);
+    const sorted = [...items].sort((a,b)=>{
+      if(a.priority&&!b.priority)return -1; if(!a.priority&&b.priority)return 1;
+      return a.dk<b.dk?-1:1;
+    });
+    const priCount = sorted.filter(x=>x.priority).length;
+    const subLabel = sorted.length===0?'未提出':`${sorted.length}日 提出${priCount>0?` (⭐${priCount}日)`:''}`;
+    const badges = sorted.length===0
+      ? '<span style="font-size:11px;color:#bbb;">未提出</span>'
+      : sorted.map(item=>{
+          const d = parseInt(item.dk.split('-')[2]);
+          const bg = item.priority?'#FEF3C7':`${color}15`;
+          const bc = item.priority?'#FDE68A':`${color}30`;
+          const tc = item.priority?'#92400E':dark;
+          const star = item.priority?'⭐':'';
+          return `<span style="display:inline-block;padding:2px 7px;border-radius:5px;font-size:10px;font-weight:600;background:${bg};color:${tc};border:0.5px solid ${bc};margin:2px;">${star}${d}日</span>`;
+        }).join('');
+    return `<tr style="border-bottom:0.5px solid #f3f4f6;">
+      <td style="padding:8px 6px;white-space:nowrap;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="width:28px;height:28px;border-radius:50%;background:${color}20;color:${dark};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;">${s.name.slice(0,1)}</div>
+          <div><div style="font-size:13px;font-weight:600;color:#374151;">${s.name}</div><div style="font-size:11px;color:#9ca3af;">${subLabel}</div></div>
+        </div>
+      </td>
+      <td style="padding:8px 6px;text-align:right;">${badges}</td>
+    </tr>`;
+  }).join('');
+
+  // PDF HTML全体
+  const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
+  <title>希望休一覧 ${label}</title>
+  <style>
+    @media print{body{margin:0;} .no-print{display:none;}}
+    body{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;margin:0;padding:24px;background:#f0f2f5;color:#111;}
+    .page{background:#fff;border-radius:12px;max-width:700px;margin:0 auto;padding:32px;box-shadow:0 4px 24px rgba(0,0,0,.1);}
+    table{border-collapse:collapse;width:100%;}
+    h1{font-size:22px;font-weight:700;margin:0;letter-spacing:-0.02em;}
+  </style>
+  </head><body>
+  <div class="page">
+    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;">
+      <div><h1>希望休申請一覧</h1><div style="font-size:13px;color:#888;margin-top:4px;">${label}</div></div>
+      <div style="text-align:right;font-size:11px;color:#aaa;">出力日<br><span style="font-size:12px;color:#555;">${todayStr}</span></div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:16px;padding:10px 12px;background:#f8f9fa;border-radius:8px;">${legendHtml}</div>
+    <div style="border:0.5px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:24px;">
+      <table>${calRows}</table>
+    </div>
+    <div style="font-size:10px;font-weight:700;letter-spacing:.08em;color:#9ca3af;text-transform:uppercase;margin-bottom:8px;">提出状況まとめ</div>
+    <table><tbody>${summaryHtml}</tbody></table>
+    <div style="margin-top:24px;padding-top:12px;border-top:0.5px solid #f3f4f6;display:flex;justify-content:space-between;font-size:10px;color:#d1d5db;">
+      <span>cielo / glam タイムカード</span><span>1 / 1</span>
+    </div>
+  </div>
+  <div class="no-print" style="text-align:center;margin-top:16px;">
+    <button onclick="window.print()" style="padding:12px 32px;font-size:14px;font-weight:600;background:#1D6F42;color:#fff;border:none;border-radius:10px;cursor:pointer;">🖨️ 印刷 / PDFとして保存</button>
+  </div>
+  </body></html>`;
+
+  const win = window.open('','_blank');
+  win.document.write(html);
+  win.document.close();
 }
 
 // wish設定の初期値反映はrenderCfg内で直接呼ぶ（updateWishCfgDisplay）
