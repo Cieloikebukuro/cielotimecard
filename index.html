@@ -1076,13 +1076,34 @@ function goTop(){S.selStaff=null;S.pin='';showScr('top');renderTop();}
 function afterPin(){
   const now=new Date(),mk=mKey(now);
   const set=holSetMonths[S.selStaff.id]||[];
-  if(!set.includes(mk))openHolidaySetup('first',now);
-  else loginStaff(S.selStaff);
+  if(set.includes(mk)){
+    // 今月は設定済み → そのままログイン
+    loginStaff(S.selStaff);
+    return;
+  }
+  // 今月の公休データを先読みして上限チェック
+  const r=getR(S.selStaff.id);
+  const offCount=Object.entries(r).filter(([k,v])=>k.startsWith(mk)&&v.type==='off').length;
+  if(offLimit!==null && offCount>=offLimit){
+    // 公休上限に達している → スキップしてログイン
+    if(!holSetMonths[S.selStaff.id])holSetMonths[S.selStaff.id]=[];
+    holSetMonths[S.selStaff.id].push(mk);
+    loginStaff(S.selStaff);
+    return;
+  }
+  // 未設定 → 公休入力画面へ
+  openHolidaySetup('first',now);
 }
 
 // =============================================
 // 公休設定
 // =============================================
+function openHolidayEdit(){
+  // マイページから「公休・夏休みを編集する」ボタンで呼ばれる
+  S.selStaff = null; // 自分自身なのでselStaffはnull、S.roleを使う
+  openHolidaySetup('edit', S.calMonth);
+}
+
 function openHolidaySetup(mode,month){
   S.holMode=mode; S.holMonth=month||S.calMonth; S.curDayType='off'; S.summerSel=[];
   const r=getR(S.selStaff?S.selStaff.id:S.role);
