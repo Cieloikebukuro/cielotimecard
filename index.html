@@ -3345,21 +3345,34 @@ function saveWishData(data){
 }
 
 // 翌月のmKey (YYYY-MM)
+// 申請対象月のmKeyを返す
+// 締切日以内 → 翌月分、締切翌日以降 → 翌々月分
 function nextMonthKey(base){
   const d = base || new Date();
+  const { deadlineDay } = getWishSettings();
+  const today = d.getDate();
+  // 締切を過ぎていたら翌々月、そうでなければ翌月
+  const offset = today > deadlineDay ? 2 : 1;
   const y = d.getFullYear(), m = d.getMonth()+1;
-  const nm = m===12?1:m+1, ny = m===12?y+1:y;
-  return ny+'-'+String(nm).padStart(2,'0');
+  let tm = m + offset, ty = y;
+  if(tm > 12){ tm -= 12; ty += 1; }
+  return ty+'-'+String(tm).padStart(2,'0');
 }
 function mkToLabel(mk){
   const [y,m] = mk.split('-');
   return y+'年'+parseInt(m)+'月';
 }
 
-// 提出期限を過ぎているか
+// 締切チェック（締切後は翌々月に切り替わるだけで「期限切れ」にはならない）
 function isWishExpired(){
+  return false; // 常に申請可能（期間は nextMonthKey で制御）
+}
+
+// 現在の申請受付状態を返す
+// 'current'=通常申請中 / 'next'=翌々月申請中（締切後）
+function getWishPhase(){
   const { deadlineDay } = getWishSettings();
-  return new Date().getDate() > deadlineDay;
+  return new Date().getDate() > deadlineDay ? 'next' : 'current';
 }
 
 // スタッフの希望休選択状態 [{dk, priority}]
@@ -3379,18 +3392,28 @@ function renderWish(){
   wishSel = raw.map(x => typeof x === 'string' ? {dk:x, priority:false} : x);
 
   // ヘッダー
+  const phase = getWishPhase();
+  const now = new Date();
   document.getElementById('wish-title').textContent = mkToLabel(mk)+'の希望休';
-  document.getElementById('wish-subtitle').textContent = s.name;
-  document.getElementById('wish-deadline-disp').textContent = `毎月${cfg.deadlineDay}日まで`;
+  // サブタイトル：申請フェーズを表示
+  const phaseLabel = phase === 'next'
+    ? `締切後のため翌々月（${mkToLabel(mk)}）分を受付中`
+    : `翌月（${mkToLabel(mk)}）分の申請を受付中`;
+  document.getElementById('wish-subtitle').textContent = s.name + '　' + phaseLabel;
+  // 締切表示
+  const nextDeadline = phase === 'next'
+    ? `来月${cfg.deadlineDay}日まで`
+    : `今月${cfg.deadlineDay}日まで`;
+  document.getElementById('wish-deadline-disp').textContent = nextDeadline;
 
-  // 期限切れ・提出済みバナー
-  document.getElementById('wish-expired-bar').style.display = expired ? 'block' : 'none';
-  document.getElementById('wish-submitted-bar').style.display = (!expired && wishSel.length>0) ? 'block' : 'none';
+  // 期限切れバナー（常に非表示）
+  document.getElementById('wish-expired-bar').style.display = 'none';
+  document.getElementById('wish-submitted-bar').style.display = (wishSel.length>0) ? 'block' : 'none';
 
-  // 提出ボタン
+  // 提出ボタン（常に有効）
   const btn = document.getElementById('wish-submit-btn');
-  btn.disabled = expired;
-  btn.style.opacity = expired ? '0.4' : '1';
+  btn.disabled = false;
+  btn.style.opacity = '1';
 
   renderWishCal(mk, expired, cfg.limitDays, cfg.priorityDays);
   updateWishCount(cfg.limitDays, cfg.priorityDays);
@@ -3534,9 +3557,10 @@ let wishViewMonth = null; // Date
 
 function renderWishView(){
   if(!wishViewMonth){
-    // デフォルト: 翌月
-    const now = new Date();
-    wishViewMonth = new Date(now.getFullYear(), now.getMonth()+1, 1);
+    // デフォルト: 申請対象月（締切前=翌月、締切後=翌々月）
+    const mk = nextMonthKey();
+    const [ty,tm] = mk.split('-').map(Number);
+    wishViewMonth = new Date(ty, tm-1, 1);
   }
   const mk = mKey(wishViewMonth);
   document.getElementById('wishview-month-label').textContent = mkToLabel(mk);
