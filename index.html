@@ -294,6 +294,11 @@
     </button>
     <div id="break-edit-area"></div>
     <div id="bulk-input-area"></div>
+    <button class="edit-hol-btn" onclick="openMyWishReset()" style="background:#FEF3C7;border-color:#FDE68A;color:#92400E;">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8a5 5 0 1 0 10 0A5 5 0 0 0 3 8M8 5v3l2 1"/><path d="M13 3l-2 2"/></svg>
+      希望休をリセットする
+    </button>
+    <div id="my-wish-reset-area"></div>
     <button class="edit-hol-btn" onclick="openMyPinChange()" style="margin-bottom:1rem;">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="6" r="3"/><path d="M2 14c0-3 2.7-5 6-5s6 2 6 5"/></svg>
       PINを変更する
@@ -2998,6 +3003,8 @@ function renderCfg(){
         <button class="pin-reset-btn" onclick="openPinReset('${s.id}')">PIN変更</button>
         <button onclick="toggleHourly('${s.id}')" style="padding:5px 10px;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer;border:0.5px solid;margin-left:4px;${isHourly?'background:#EEEDFE;color:#534AB7;border-color:#AFA9EC;':'background:#f5f5f0;color:#888;border-color:#ddd;'}">${isHourly?'月給制に戻す':'アルバイト'}</button>
         <button class="toggle-leave ${s.leave?'on':'off'}" style="margin-left:4px;" onclick="toggleLeave('${s.id}')">${s.leave?'復職':'休職'}</button>
+        <button onclick="resetWishForStaff('${s.id}','${s.name}')" style="padding:5px 10px;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer;border:0.5px solid #FDE68A;background:#FEF3C7;color:#92400E;margin-left:4px;">希望休リセット</button>
+        <button onclick="confirmDeleteStaff('${s.id}','${s.name}')" style="padding:5px 10px;font-size:11px;font-weight:600;border-radius:6px;cursor:pointer;border:0.5px solid #F7C1C1;background:#FCEBEB;color:#A32D2D;margin-left:4px;">削除</button>
       </div>
       <div style="padding:0 16px 12px 58px;display:flex;flex-direction:column;gap:8px;">
         <div style="display:flex;align-items:center;gap:10px;">
@@ -3624,6 +3631,99 @@ function wishViewMove(d){
   wishViewMonth = new Date(wishViewMonth.getFullYear(), wishViewMonth.getMonth()+d, 1);
   renderWishView();
 }
+// =============================================
+// 希望休リセット・スタッフ削除
+// =============================================
+
+// 管理画面: 特定スタッフの希望休をリセット
+function resetWishForStaff(staffId, name){
+  const mk = nextMonthKey();
+  const label = mkToLabel(mk);
+  if(!confirm(`${name} の ${label} の希望休申請をリセットしますか？`)) return;
+  const data = getWishData();
+  if(data[mk]){
+    delete data[mk][staffId];
+    saveWishData(data);
+  }
+  // 確認トースト
+  const toast = document.createElement('div');
+  toast.textContent = `✓ ${name} の希望休をリセットしました`;
+  toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1D9E75;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;';
+  document.body.appendChild(toast);
+  setTimeout(()=>toast.remove(), 2500);
+}
+
+// 管理画面: スタッフ削除
+async function confirmDeleteStaff(staffId, name){
+  if(!confirm(`${name} を削除しますか？\n※勤怠データも全て削除されます。この操作は取り消せません。`)) return;
+  // ローカルデータから削除
+  staff = staff.filter(s=>s.id!==staffId);
+  delete salary[staffId];
+  delete rec[staffId];
+  // 希望休データからも削除
+  const data = getWishData();
+  Object.keys(data).forEach(mk=>{ if(data[mk][staffId]) delete data[mk][staffId]; });
+  saveWishData(data);
+  // Supabase削除
+  if(sbConnected){
+    try{
+      await sbFetch(`tc_staff?id=eq.${staffId}`,{method:'DELETE'});
+      await sbFetch(`tc_records?staff_id=eq.${staffId}`,{method:'DELETE'});
+    }catch(e){console.error('delete staff error:',e);}
+  }
+  renderCfg();
+  renderTop();
+  // トースト
+  const toast = document.createElement('div');
+  toast.textContent = `✓ ${name} を削除しました`;
+  toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#E24B4A;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;';
+  document.body.appendChild(toast);
+  setTimeout(()=>toast.remove(), 2500);
+}
+
+// アシスタント: 自分の希望休をリセット
+function openMyWishReset(){
+  const area = document.getElementById('my-wish-reset-area');
+  if(area.innerHTML){area.innerHTML='';return;}
+  const mk = nextMonthKey();
+  const label = mkToLabel(mk);
+  const data = getWishData();
+  const myDays = (data[mk]?.[S.role]) || [];
+  if(myDays.length === 0){
+    area.innerHTML = `<div style="background:#f5f5f0;border-radius:10px;padding:10px 14px;margin-bottom:1rem;font-size:12px;color:#888;text-align:center;">${label} の希望休申請はまだありません</div>`;
+    return;
+  }
+  area.innerHTML = `
+    <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:12px;padding:1rem;margin-bottom:1rem;">
+      <div style="font-size:13px;font-weight:600;color:#92400E;margin-bottom:6px;">⭐ ${label} の希望休をリセット</div>
+      <div style="font-size:12px;color:#78350F;margin-bottom:12px;line-height:1.6;">
+        現在 <strong>${myDays.length}日</strong> 申請中です。リセットすると全て削除されます。
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button onclick="doMyWishReset()" style="flex:1;padding:10px;font-size:13px;font-weight:600;background:#F59E0B;color:#fff;border:none;border-radius:8px;cursor:pointer;">リセットする</button>
+        <button onclick="document.getElementById('my-wish-reset-area').innerHTML=''" style="padding:10px 16px;font-size:13px;font-weight:500;background:#eee;color:#888;border:0.5px solid #ddd;border-radius:8px;cursor:pointer;">キャンセル</button>
+      </div>
+    </div>`;
+}
+
+function doMyWishReset(){
+  const mk = nextMonthKey();
+  const data = getWishData();
+  if(data[mk]) delete data[mk][S.role];
+  saveWishData(data);
+  wishSel = [];
+  document.getElementById('my-wish-reset-area').innerHTML='';
+  // 希望休タブも更新
+  renderWish();
+  // トースト
+  const toast = document.createElement('div');
+  toast.textContent = '✓ 希望休をリセットしました';
+  toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#F59E0B;color:#fff;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:600;z-index:9999;';
+  document.body.appendChild(toast);
+  setTimeout(()=>toast.remove(), 2500);
+}
+
+
 
 function exportWishPDF(){
   if(!wishViewMonth) wishViewMonth = new Date();
