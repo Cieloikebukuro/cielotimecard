@@ -632,8 +632,9 @@ ALTER TABLE settings DISABLE ROW LEVEL SECURITY;</pre>
   <div class="scr" id="scr-wish">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;">
       <div>
-        <div style="font-size:17px;font-weight:500;color:#1a1a1a;" id="wish-title">希望休の申請</div>
-        <div style="font-size:12px;color:#888;margin-top:2px;" id="wish-subtitle"></div>
+        <div id="wish-title" style="font-size:15px;font-weight:500;color:#888;"></div>
+        <div id="wish-month-label" style="font-size:26px;font-weight:700;color:#1a1a1a;letter-spacing:-0.02em;line-height:1.1;margin-top:2px;"></div>
+        <div style="font-size:12px;color:#888;margin-top:3px;" id="wish-subtitle"></div>
       </div>
       <div style="text-align:right;">
         <div style="font-size:11px;color:#888;">提出期限</div>
@@ -3394,11 +3395,13 @@ function renderWish(){
   // ヘッダー
   const phase = getWishPhase();
   const now = new Date();
-  document.getElementById('wish-title').textContent = mkToLabel(mk)+'の希望休';
+  // タイトル：月を大きく強調
+  document.getElementById('wish-title').textContent = '希望休の申請';
+  document.getElementById('wish-month-label').textContent = mkToLabel(mk);
   // サブタイトル：申請フェーズを表示
   const phaseLabel = phase === 'next'
-    ? `締切後のため翌々月（${mkToLabel(mk)}）分を受付中`
-    : `翌月（${mkToLabel(mk)}）分の申請を受付中`;
+    ? '締切後 ▸ 翌々月分を受付中'
+    : '翌月分を受付中';
   document.getElementById('wish-subtitle').textContent = s.name + '　' + phaseLabel;
   // 締切表示
   const nextDeadline = phase === 'next'
@@ -3536,6 +3539,12 @@ function submitWish(){
   if(isWishExpired()) return;
   const mk = nextMonthKey();
   const data = getWishData();
+  const existing = (data[mk]?.[S.role]) || [];
+  // 提出済みがある場合は上書き確認
+  if(existing.length > 0){
+    const label = mkToLabel(mk);
+    if(!confirm(`${label}の希望休は既に提出済みです。\n上書きしてよろしいですか？`)) return;
+  }
   if(!data[mk]) data[mk] = {};
   // ソート: 優先→通常の順
   const sorted = [...wishSel].sort((a,b)=>{
