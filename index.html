@@ -1543,10 +1543,12 @@ function ownerLogin(){
   const pw=document.getElementById('owner-pw-input').value;
   if(pw===ownerPw){
     S.role='owner';
-    // オーナーは全タブ表示
+    // オーナーは希望休申請タブ以外を表示
     ['my','att','wish','salary','stylist','wari','wishview','cfg'].forEach(id=>{
       const b=document.getElementById('nav-'+id);
-      if(b){b.style.display='block';b.disabled=false;b.classList.remove('on');}
+      if(!b)return;
+      if(id==='wish'){b.style.display='none';return;}
+      b.style.display='block';b.disabled=false;b.classList.remove('on');
     });
     setPill('オーナー','pill-owner');
     document.getElementById('main-nav').style.display='flex';
