@@ -492,7 +492,12 @@
     <div class="cfg-block">
       <div class="block-title">上限日数（スタッフが選べる最大日数）</div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
-        <input type="number" id="wish-limit-input" min="1" max="31" placeholder="例: 3" style="width:80px;padding:7px 10px;font-size:14px;font-family:'DM Mono',monospace;border:0.5px solid #ccc;border-radius:8px;background:#f5f5f0;color:#1a1a1a;" oninput="saveWishSettings()" />
+        <input type="number" id="wish-limit-input" min="1" max="31" placeholder="例: 9" style="width:80px;padding:7px 10px;font-size:14px;font-family:'DM Mono',monospace;border:0.5px solid #ccc;border-radius:8px;background:#f5f5f0;color:#1a1a1a;" oninput="saveWishSettings()" />
+        <span style="font-size:13px;color:#888;">日 / 月</span>
+      </div>
+      <div style="margin-top:1rem;" class="block-title">⭐ 優先希望休の上限（上限日数のうち優先として申請できる日数）</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+        <input type="number" id="wish-priority-input" min="0" max="31" placeholder="例: 2" style="width:80px;padding:7px 10px;font-size:14px;font-family:'DM Mono',monospace;border:0.5px solid #F59E0B;border-radius:8px;background:#FFFBEB;color:#92400E;" oninput="saveWishSettings()" />
         <span style="font-size:13px;color:#888;">日 / 月</span>
       </div>
       <div style="margin-top:1rem;" class="block-title">提出期限（翌月分を毎月 何日まで）</div>
@@ -632,7 +637,7 @@ ALTER TABLE settings DISABLE ROW LEVEL SECURITY;</pre>
     </div>
 
     <!-- ステータスバー -->
-    <div style="display:flex;align-items:center;justify-content:space-between;background:#f5f5f0;border-radius:10px;padding:9px 14px;margin-bottom:1rem;">
+    <div style="display:flex;align-items:center;justify-content:space-between;background:#f5f5f0;border-radius:10px;padding:9px 14px;margin-bottom:0.5rem;">
       <div>
         <span style="font-size:11px;color:#888;">選択中</span>
         <span style="font-size:22px;font-weight:500;font-family:'DM Mono',monospace;color:#1a1a1a;margin-left:6px;" id="wish-count">0</span>
@@ -640,6 +645,17 @@ ALTER TABLE settings DISABLE ROW LEVEL SECURITY;</pre>
       </div>
       <div id="wish-limit-badge" style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:#EBF4FD;color:#185FA5;"></div>
     </div>
+    <!-- 優先希望休カウンター -->
+    <div style="display:flex;align-items:center;justify-content:space-between;background:#FFFBEB;border-radius:10px;padding:7px 14px;margin-bottom:1rem;border:1px solid #FDE68A;">
+      <div>
+        <span style="font-size:11px;color:#92400E;">⭐ 優先希望休</span>
+        <span style="font-size:18px;font-weight:500;font-family:'DM Mono',monospace;color:#92400E;margin-left:6px;" id="wish-priority-count">0</span>
+        <span style="font-size:12px;color:#92400E;margin-left:2px;">日</span>
+      </div>
+      <div id="wish-priority-badge" style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:#FEF3C7;color:#92400E;"></div>
+    </div>
+    <!-- 操作ガイド -->
+    <div style="font-size:11px;color:#888;margin-bottom:0.75rem;text-align:center;">タップで選択 → もう一度タップで⭐優先に → もう一度タップで解除</div>
 
     <!-- 期限切れ警告 -->
     <div id="wish-expired-bar" style="display:none;background:#FCEBEB;border-radius:10px;padding:9px 14px;margin-bottom:1rem;font-size:12px;color:#A32D2D;font-weight:600;">
@@ -3057,8 +3073,10 @@ function renderCfg(){
   // 希望休設定の初期値を反映
   const wishCfg = getWishSettings();
   const wishLi = document.getElementById('wish-limit-input');
+  const wishPi = document.getElementById('wish-priority-input');
   const wishDi = document.getElementById('wish-deadline-input');
   if(wishLi) wishLi.value = wishCfg.limitDays;
+  if(wishPi) wishPi.value = wishCfg.priorityDays;
   if(wishDi) wishDi.value = wishCfg.deadlineDay;
   updateWishCfgDisplay();
 }
@@ -3258,27 +3276,34 @@ function getWishSettings(){
   if(raw){ try{
     const p = JSON.parse(raw);
     return {
-      limitDays: (p.limitDays>0) ? p.limitDays : 3,
-      deadlineDay: (p.deadlineDay>0 && p.deadlineDay<=31) ? p.deadlineDay : 25
+      limitDays:    (p.limitDays>0)                     ? p.limitDays    : 9,
+      priorityDays: (p.priorityDays>=0)                 ? p.priorityDays : 2,
+      deadlineDay:  (p.deadlineDay>0&&p.deadlineDay<=31) ? p.deadlineDay  : 25
     };
   }catch(e){} }
-  return { limitDays: 3, deadlineDay: 25 };
+  return { limitDays: 9, priorityDays: 2, deadlineDay: 25 };
 }
 function saveWishSettings(){
   const lv = parseInt(document.getElementById('wish-limit-input')?.value);
+  const pv = parseInt(document.getElementById('wish-priority-input')?.value);
   const dv = parseInt(document.getElementById('wish-deadline-input')?.value);
   const cur = getWishSettings();
-  const s = { limitDays: lv>0?lv:cur.limitDays, deadlineDay: dv>0&&dv<=31?dv:cur.deadlineDay };
+  const s = {
+    limitDays:    lv>0         ? lv : cur.limitDays,
+    priorityDays: pv>=0        ? pv : cur.priorityDays,
+    deadlineDay:  dv>0&&dv<=31 ? dv : cur.deadlineDay
+  };
   localStorage.setItem('tc_wish_settings', JSON.stringify(s));
   updateWishCfgDisplay();
 }
 function updateWishCfgDisplay(){
   const el = document.getElementById('wish-cfg-display'); if(!el) return;
   const s = getWishSettings();
-  el.innerHTML = `現在の設定: 上限 <strong>${s.limitDays}日</strong>、毎月 <strong>${s.deadlineDay}日</strong>まで`;
+  el.innerHTML = `現在の設定: 上限 <strong>${s.limitDays}日</strong>（うち優先 <strong>${s.priorityDays}日</strong>）、毎月 <strong>${s.deadlineDay}日</strong>まで`;
 }
 
-function getWishData(){ // { "2025-06": { "staffId": ["2025-06-03",...], ... }, ... }
+// データ形式: { "2026-05": { "staffId": [{dk:"2026-05-03",priority:false}, ...] } }
+function getWishData(){
   const raw = localStorage.getItem('tc_wish_requests');
   if(raw){ try{ return JSON.parse(raw); }catch(e){} }
   return {};
@@ -3290,11 +3315,11 @@ function saveWishData(data){
 // 翌月のmKey (YYYY-MM)
 function nextMonthKey(base){
   const d = base || new Date();
-  const y = d.getFullYear(), m = d.getMonth()+1; // 翌月
+  const y = d.getFullYear(), m = d.getMonth()+1;
   const nm = m===12?1:m+1, ny = m===12?y+1:y;
   return ny+'-'+String(nm).padStart(2,'0');
 }
-function mkToLabel(mk){ // "2025-06" → "2025年6月"
+function mkToLabel(mk){
   const [y,m] = mk.split('-');
   return y+'年'+parseInt(m)+'月';
 }
@@ -3302,12 +3327,11 @@ function mkToLabel(mk){ // "2025-06" → "2025年6月"
 // 提出期限を過ぎているか
 function isWishExpired(){
   const { deadlineDay } = getWishSettings();
-  const now = new Date();
-  return now.getDate() > deadlineDay;
+  return new Date().getDate() > deadlineDay;
 }
 
-// スタッフの希望休選択状態 (画面表示中のみ保持)
-let wishSel = []; // ["2025-06-03", ...]
+// スタッフの希望休選択状態 [{dk, priority}]
+let wishSel = [];
 
 function renderWish(){
   if(!S.role || S.role==='owner') return;
@@ -3316,10 +3340,11 @@ function renderWish(){
   const mk = nextMonthKey();
   const expired = isWishExpired();
 
-  // データ読み込み
+  // データ読み込み（新旧両形式対応）
   const allData = getWishData();
-  const myDays = (allData[mk]?.[S.role]) || [];
-  wishSel = [...myDays];
+  const raw = (allData[mk]?.[S.role]) || [];
+  // 旧形式（文字列配列）→新形式に変換
+  wishSel = raw.map(x => typeof x === 'string' ? {dk:x, priority:false} : x);
 
   // ヘッダー
   document.getElementById('wish-title').textContent = mkToLabel(mk)+'の希望休';
@@ -3328,87 +3353,128 @@ function renderWish(){
 
   // 期限切れ・提出済みバナー
   document.getElementById('wish-expired-bar').style.display = expired ? 'block' : 'none';
-  document.getElementById('wish-submitted-bar').style.display = (!expired && myDays.length>0) ? 'block' : 'none';
+  document.getElementById('wish-submitted-bar').style.display = (!expired && wishSel.length>0) ? 'block' : 'none';
 
   // 提出ボタン
   const btn = document.getElementById('wish-submit-btn');
   btn.disabled = expired;
   btn.style.opacity = expired ? '0.4' : '1';
 
-  renderWishCal(mk, expired, cfg.limitDays);
-  updateWishCount(cfg.limitDays);
+  renderWishCal(mk, expired, cfg.limitDays, cfg.priorityDays);
+  updateWishCount(cfg.limitDays, cfg.priorityDays);
 }
 
-function renderWishCal(mk, expired, limitDays){
-  limitDays = (limitDays>0) ? limitDays : 3;
+function renderWishCal(mk, expired, limitDays, priorityDays){
+  limitDays    = (limitDays>0)    ? limitDays    : 9;
+  priorityDays = (priorityDays>=0) ? priorityDays : 2;
   const [y,m] = mk.split('-').map(Number);
-  const label = document.getElementById('wish-cal-month');
-  label.textContent = y+'年'+m+'月';
+  document.getElementById('wish-cal-month').textContent = y+'年'+m+'月';
 
   const grid = document.getElementById('wish-cal-grid');
   grid.innerHTML = '';
-  const firstDow = new Date(y,m-1,1).getDay();
+  const firstDow   = new Date(y,m-1,1).getDay();
   const daysInMonth = new Date(y,m,0).getDate();
+  const priorityCount = wishSel.filter(x=>x.priority).length;
 
-  // 空白埋め
-  for(let i=0;i<firstDow;i++){
-    const blank = document.createElement('div'); grid.appendChild(blank);
-  }
+  for(let i=0;i<firstDow;i++) grid.appendChild(document.createElement('div'));
+
   for(let d=1;d<=daysInMonth;d++){
-    const dk = y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
-    const sel = wishSel.includes(dk);
-    const dow = new Date(y,m-1,d).getDay();
+    const dk  = y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+    const item = wishSel.find(x=>x.dk===dk);
+    const sel  = !!item;
+    const isPriority = item?.priority || false;
+    const dow  = new Date(y,m-1,d).getDay();
     const isSun = dow===0, isSat = dow===6;
-    const limitReached = wishSel.length >= limitDays && !sel;
-    const disabled = expired || (limitReached);
+    // 上限チェック
+    const limitReached    = wishSel.length >= limitDays && !sel;
+    const priLimitReached = isPriority ? false : (priorityCount >= priorityDays);
+    const disabled = expired || limitReached;
 
     const cell = document.createElement('div');
-    cell.style.cssText = `aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;font-size:12px;font-weight:500;transition:all .12s;border:1.5px solid transparent;`;
+    cell.style.cssText = `aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;font-size:12px;font-weight:500;transition:all .12s;border:1.5px solid transparent;position:relative;`;
 
-    if(sel){
-      cell.style.background = '#2B7FD4';
-      cell.style.color = '#fff';
+    if(isPriority){
+      // 優先希望休：黄色
+      cell.style.background   = '#F59E0B';
+      cell.style.color        = '#fff';
+      cell.style.borderColor  = '#D97706';
+    } else if(sel){
+      // 通常選択：青
+      cell.style.background  = '#2B7FD4';
+      cell.style.color       = '#fff';
       cell.style.borderColor = '#185FA5';
     } else if(disabled){
       cell.style.background = '#f0f0f0';
-      cell.style.color = '#ccc';
-      cell.style.cursor = 'not-allowed';
+      cell.style.color      = '#ccc';
+      cell.style.cursor     = 'not-allowed';
     } else {
       cell.style.background = '#f5f5f0';
-      cell.style.color = isSun ? '#E24B4A' : isSat ? '#2B7FD4' : '#1a1a1a';
-      cell.style.cursor = 'pointer';
+      cell.style.color      = isSun ? '#E24B4A' : isSat ? '#2B7FD4' : '#1a1a1a';
+      cell.style.cursor     = 'pointer';
     }
 
-    cell.textContent = d;
+    // 日付
+    const daySpan = document.createElement('span');
+    daySpan.textContent = d;
+    cell.appendChild(daySpan);
+
+    // ⭐アイコン（優先）
+    if(isPriority){
+      const star = document.createElement('span');
+      star.textContent = '⭐';
+      star.style.cssText = 'font-size:9px;line-height:1;margin-top:1px;';
+      cell.appendChild(star);
+    }
+
     if(!disabled){
-      cell.addEventListener('click', ()=>{ toggleWishDay(dk, limitDays); });
-      cell.addEventListener('mouseover', ()=>{ if(!sel) cell.style.background='#e5e5e0'; });
-      cell.addEventListener('mouseout', ()=>{ if(!sel) cell.style.background='#f5f5f0'; });
+      cell.addEventListener('click', ()=>{ toggleWishDay(dk, limitDays, priorityDays); });
     }
     grid.appendChild(cell);
   }
 }
 
-function toggleWishDay(dk, limitDays){
-  const idx = wishSel.indexOf(dk);
-  if(idx>=0){
-    wishSel.splice(idx,1);
-  } else {
+// 3段階トグル: 未選択 → 通常 → 優先 → 未選択
+function toggleWishDay(dk, limitDays, priorityDays){
+  const idx = wishSel.findIndex(x=>x.dk===dk);
+  if(idx < 0){
+    // 未選択 → 通常
     if(wishSel.length >= limitDays) return;
-    wishSel.push(dk);
+    wishSel.push({dk, priority:false});
+  } else if(!wishSel[idx].priority){
+    // 通常 → 優先（優先上限に達していなければ）
+    const priCount = wishSel.filter(x=>x.priority).length;
+    if(priCount < priorityDays){
+      wishSel[idx].priority = true;
+    } else {
+      // 優先枠が埋まっていたら解除へ
+      wishSel.splice(idx,1);
+    }
+  } else {
+    // 優先 → 解除
+    wishSel.splice(idx,1);
   }
   const mk = nextMonthKey();
-  renderWishCal(mk, false, limitDays);
-  updateWishCount(limitDays);
+  renderWishCal(mk, false, limitDays, priorityDays);
+  updateWishCount(limitDays, priorityDays);
   document.getElementById('wish-ok').textContent = '';
 }
 
-function updateWishCount(limitDays){
-  document.getElementById('wish-count').textContent = wishSel.length;
+function updateWishCount(limitDays, priorityDays){
+  const total = wishSel.length;
+  const priCnt = wishSel.filter(x=>x.priority).length;
+  document.getElementById('wish-count').textContent = total;
   const badge = document.getElementById('wish-limit-badge');
   badge.textContent = `上限 ${limitDays}日`;
-  badge.style.background = wishSel.length >= limitDays ? '#FAEEDA' : '#EBF4FD';
-  badge.style.color = wishSel.length >= limitDays ? '#633806' : '#185FA5';
+  badge.style.background = total >= limitDays ? '#FAEEDA' : '#EBF4FD';
+  badge.style.color      = total >= limitDays ? '#633806' : '#185FA5';
+
+  const pBadge = document.getElementById('wish-priority-badge');
+  const pCount = document.getElementById('wish-priority-count');
+  if(pBadge && pCount){
+    pCount.textContent = priCnt;
+    pBadge.textContent = `優先上限 ${priorityDays}日`;
+    pBadge.style.background = priCnt >= priorityDays ? '#FDE68A' : '#FEF3C7';
+  }
 }
 
 function submitWish(){
@@ -3416,7 +3482,13 @@ function submitWish(){
   const mk = nextMonthKey();
   const data = getWishData();
   if(!data[mk]) data[mk] = {};
-  data[mk][S.role] = [...wishSel].sort();
+  // ソート: 優先→通常の順
+  const sorted = [...wishSel].sort((a,b)=>{
+    if(a.priority && !b.priority) return -1;
+    if(!a.priority && b.priority) return 1;
+    return a.dk < b.dk ? -1 : 1;
+  });
+  data[mk][S.role] = sorted;
   saveWishData(data);
   document.getElementById('wish-submitted-bar').style.display = wishSel.length>0 ? 'block' : 'none';
   document.getElementById('wish-ok').textContent = '✓ 提出しました';
@@ -3466,8 +3538,13 @@ function renderWishView(){
     const dow = new Date(y,m-1,d).getDay();
     const isSun = dow===0, isSat = dow===6;
 
-    // この日を希望しているスタッフ
-    const wishers = staff.filter((s,i)=> (monthData[s.id]||[]).includes(dk));
+    // この日を希望しているスタッフ（優先かどうかも取得）
+    const wishers = staff.map((s,si)=>{
+      const raw   = monthData[s.id] || [];
+      const items = raw.map(x => typeof x==='string' ? {dk:x,priority:false} : x);
+      const item  = items.find(x=>x.dk===dk);
+      return item ? {s, si, priority: item.priority} : null;
+    }).filter(Boolean);
 
     const cell = document.createElement('div');
     cell.style.cssText = `aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;font-size:12px;font-weight:500;position:relative;background:${wishers.length>0?'#fff':'#f5f5f0'};border:${wishers.length>0?'1px solid #e5e5e0':'1px solid transparent'};`;
@@ -3480,11 +3557,15 @@ function renderWishView(){
     if(wishers.length>0){
       const dots = document.createElement('div');
       dots.style.cssText = 'display:flex;gap:2px;margin-top:2px;flex-wrap:wrap;justify-content:center;';
-      wishers.forEach((s,i2)=>{
-        const si = staff.findIndex(x=>x.id===s.id);
+      wishers.forEach(({s, si, priority})=>{
         const color = WISH_COLORS[si % WISH_COLORS.length];
         const dot = document.createElement('div');
-        dot.style.cssText = `width:5px;height:5px;border-radius:50%;background:${color};`;
+        if(priority){
+          dot.style.cssText = `width:7px;height:7px;border-radius:2px;background:#F59E0B;font-size:6px;display:flex;align-items:center;justify-content:center;color:#fff;`;
+          dot.textContent = '★';
+        } else {
+          dot.style.cssText = `width:5px;height:5px;border-radius:50%;background:${color};`;
+        }
         dots.appendChild(dot);
       });
       cell.appendChild(dots);
@@ -3497,18 +3578,36 @@ function renderWishView(){
   statusList.innerHTML = '';
   staff.forEach((s,i)=>{
     const color = WISH_COLORS[i % WISH_COLORS.length];
-    const days = monthData[s.id] || [];
+    const raw   = monthData[s.id] || [];
+    // 旧形式対応
+    const items = raw.map(x => typeof x === 'string' ? {dk:x, priority:false} : x);
+    // 優先を前に、同じグループ内は日付順
+    const sorted = [...items].sort((a,b)=>{
+      if(a.priority && !b.priority) return -1;
+      if(!a.priority && b.priority) return 1;
+      return a.dk < b.dk ? -1 : 1;
+    });
     const row = document.createElement('div');
     row.style.cssText = 'background:#fff;border:0.5px solid #e5e5e0;border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:flex-start;justify-content:space-between;';
-    const daysLabel = days.length===0
+    const daysLabel = sorted.length===0
       ? '<span style="font-size:12px;color:#bbb;">未提出</span>'
-      : days.map(dk=>{ const d=parseInt(dk.split('-')[2]); return `<span style="display:inline-block;background:${color}20;color:${color};border-radius:6px;padding:2px 7px;font-size:12px;font-weight:600;margin:2px;">${d}日</span>`; }).join('');
+      : sorted.map(item=>{
+          const d = parseInt(item.dk.split('-')[2]);
+          if(item.priority){
+            return `<span style="display:inline-block;background:#FEF3C7;color:#92400E;border-radius:6px;padding:2px 7px;font-size:12px;font-weight:600;margin:2px;border:1px solid #FDE68A;">⭐${d}日</span>`;
+          } else {
+            return `<span style="display:inline-block;background:${color}20;color:${color};border-radius:6px;padding:2px 7px;font-size:12px;font-weight:600;margin:2px;">${d}日</span>`;
+          }
+        }).join('');
+    const priCount = sorted.filter(x=>x.priority).length;
+    const subLabel = sorted.length===0 ? '未提出'
+      : `${sorted.length}日 提出${priCount>0 ? `（⭐優先 ${priCount}日）` : ''}`;
     row.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;">
         <div style="width:32px;height:32px;border-radius:50%;background:${color}20;color:${color};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;">${s.name.slice(0,1)}</div>
         <div>
           <div style="font-size:14px;font-weight:500;color:#1a1a1a;">${s.name}</div>
-          <div style="font-size:11px;color:#888;">${days.length}日 提出</div>
+          <div style="font-size:11px;color:#888;">${subLabel}</div>
         </div>
       </div>
       <div style="text-align:right;max-width:180px;">${daysLabel}</div>`;
