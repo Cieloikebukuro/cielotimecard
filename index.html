@@ -798,19 +798,22 @@ async function loadFromSupabase(){
 async function sbSaveRecord(staffId,date,data){
   if(!sbConnected){showToast('⚠️ Supabase未接続のため保存できません');return;}
   try{
+    const body=JSON.stringify({
+      staff_id:staffId, date, type:data.type,
+      start_time:data.start||DS, end_time:data.end||DE,
+      reason:data.reason||'', time_reason:data.timeReason||'',
+      break_minutes:data.break!==undefined?data.break:60,
+      confirmed:data.confirmed||false
+    });
     const res=await fetch(sbUrl+'/rest/v1/tc_records',{
       method:'POST',
       headers:{'apikey':sbKey,'Authorization':'Bearer '+sbKey,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates'},
-      body:JSON.stringify({
-        staff_id:staffId, date, type:data.type,
-        start_time:data.start||DS, end_time:data.end||DE,
-        reason:data.reason||'', time_reason:data.timeReason||'',
-        break_minutes:data.break!==undefined?data.break:60,
-        confirmed:data.confirmed||false
-      })
+      body
     });
-    if(!res.ok){const t=await res.text();console.error('save error:',t);showToast('保存失敗: '+res.status+' '+t.slice(0,60));}
-  } catch(e){console.error('save error:',e);}
+    const t=await res.text();
+    showToast((res.ok?'✅ 保存OK ':'❌ 保存失敗 ')+res.status+' '+t.slice(0,80));
+    if(!res.ok){console.error('save error:',res.status,t);}
+  } catch(e){console.error('save error:',e);showToast('❌ 例外: '+e.message);}
 }
 
 async function sbDeleteRecord(staffId,date){
