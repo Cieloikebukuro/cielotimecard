@@ -181,7 +181,7 @@
 <body>
 <div class="tc">
   <div class="topbar">
-    <div class="topbar-title">タイムカード <span style="font-size:10px;color:#aaa;font-weight:400;letter-spacing:.04em;">v2.1.0</span></div>
+    <div class="topbar-title">タイムカード <span style="font-size:10px;color:#aaa;font-weight:400;">v1.9.0</span></div>
     <div class="topbar-right">
       <div class="clk" id="live-clock"></div>
       <div class="role-pill" id="role-pill" style="display:none;"></div>
@@ -796,24 +796,21 @@ async function loadFromSupabase(){
 }
 
 async function sbSaveRecord(staffId,date,data){
-  if(!sbConnected){showToast('⚠️ Supabase未接続のため保存できません');return;}
+  if(!sbConnected)return;
   try{
-    const body=JSON.stringify({
-      staff_id:staffId, date, type:data.type,
-      start_time:data.start||DS, end_time:data.end||DE,
-      reason:data.reason||'', time_reason:data.timeReason||'',
-      break_minutes:data.break!==undefined?data.break:60,
-      confirmed:data.confirmed||false
-    });
     const res=await fetch(sbUrl+'/rest/v1/tc_records',{
       method:'POST',
       headers:{'apikey':sbKey,'Authorization':'Bearer '+sbKey,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates'},
-      body
+      body:JSON.stringify({
+        staff_id:staffId, date, type:data.type,
+        start_time:data.start||DS, end_time:data.end||DE,
+        reason:data.reason||'', time_reason:data.timeReason||'',
+        break_minutes:data.break!==undefined?data.break:60,
+        confirmed:data.confirmed||false
+      })
     });
-    const t=await res.text();
-    showToast((res.ok?'✅ 保存OK ':'❌ 保存失敗 ')+res.status+' '+t.slice(0,80));
-    if(!res.ok){console.error('save error:',res.status,t);}
-  } catch(e){console.error('save error:',e);showToast('❌ 例外: '+e.message);}
+    if(!res.ok){const t=await res.text();console.error('save error:',t);}
+  } catch(e){console.error('save error:',e);}
 }
 
 async function sbDeleteRecord(staffId,date){
@@ -2799,8 +2796,7 @@ window.addEventListener('load', async function(){
   const storedWish=localStorage.getItem('tc_wish_settings');
   if(storedWish){Object.assign(wishSettings,JSON.parse(storedWish));}
 
-  // ※ renderTop()はloadFromSupabase()内で呼ばれるため、ここでは呼ばない
-  // Supabase未接続の場合のみ初期表示
+  // Supabase未接続時のみrenderTop
   if(!sbConnected) renderTop();
 });
 </script>
