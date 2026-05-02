@@ -181,7 +181,7 @@
 <body>
 <div class="tc">
   <div class="topbar">
-    <div class="topbar-title">タイムカード</div>
+    <div class="topbar-title">タイムカード <span style="font-size:10px;color:#aaa;font-weight:400;letter-spacing:.04em;">v2.1.0</span></div>
     <div class="topbar-right">
       <div class="clk" id="live-clock"></div>
       <div class="role-pill" id="role-pill" style="display:none;"></div>
@@ -796,7 +796,7 @@ async function loadFromSupabase(){
 }
 
 async function sbSaveRecord(staffId,date,data){
-  if(!sbConnected)return;
+  if(!sbConnected){showToast('⚠️ Supabase未接続のため保存できません');return;}
   try{
     const res=await fetch(sbUrl+'/rest/v1/tc_records',{
       method:'POST',
@@ -809,7 +809,7 @@ async function sbSaveRecord(staffId,date,data){
         confirmed:data.confirmed||false
       })
     });
-    if(!res.ok){const t=await res.text();console.error('save error:',t);}
+    if(!res.ok){const t=await res.text();console.error('save error:',t);showToast('保存失敗: '+res.status+' '+t.slice(0,60));}
   } catch(e){console.error('save error:',e);}
 }
 
