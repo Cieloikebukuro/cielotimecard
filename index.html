@@ -848,7 +848,6 @@ async function saveInitialData(){
       await sbFetch('tc_stylists',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates'},body:JSON.stringify({id:s.id,name:s.name,store:s.store,days:s.days,holiday:s.holiday||0})});
     }
     await loadFromSupabase();
-    renderTop();
   } catch(e){
     msg.style.color='#E24B4A';
     msg.textContent='保存に失敗しました: '+e.message;
@@ -2797,7 +2796,9 @@ window.addEventListener('load', async function(){
   const storedWish=localStorage.getItem('tc_wish_settings');
   if(storedWish){Object.assign(wishSettings,JSON.parse(storedWish));}
 
-  renderTop();
+  // ※ renderTop()はloadFromSupabase()内で呼ばれるため、ここでは呼ばない
+  // Supabase未接続の場合のみ初期表示
+  if(!sbConnected) renderTop();
 });
 </script>
 </body>
