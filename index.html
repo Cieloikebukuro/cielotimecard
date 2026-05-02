@@ -762,6 +762,15 @@ async function loadFromSupabase(){
         stylists=stData.map(s=>({id:s.id, name:s.name, store:s.store, days:s.days||[1,1,1,1,1,0,0], holiday:s.holiday||0}));
       }
     } catch(e){}
+    // 希望休データをSupabaseから読み込む
+    try{
+      const wishRows=await sbFetch('tc_wish?select=*');
+      wishData={};
+      wishRows.forEach(w=>{
+        if(!wishData[w.staff_id])wishData[w.staff_id]={};
+        wishData[w.staff_id][w.month]={regular:w.regular||[], priority:w.priority||[]};
+      });
+    } catch(e){}
     if(S.role && S.role!=='owner'){
       const currentStaff=staff.find(x=>x.id===S.role);
       if(currentStaff){ renderMyPage(); }
@@ -2072,9 +2081,9 @@ async function submitWish(){
   const myWish=wishData[S.role]?.[mk]||{regular:[],priority:[]};
   if(sbConnected){
     try{
-      await sbFetch('tc_wish', {
+      await sbFetch('tc_wish?on_conflict=staff_id,month', {
         method:'POST',
-        headers:{'Prefer':'resolution=merge-duplicates'},
+        headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
         body:JSON.stringify({staff_id:S.role, month:mk, regular:myWish.regular||[], priority:myWish.priority||[]})
       });
     } catch(e){ console.log('wish save skipped'); }
