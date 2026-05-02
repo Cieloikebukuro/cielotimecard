@@ -1984,14 +1984,15 @@ function renderWish(){
   const s = staff.find(x=>x.id===S.role); if(!s)return;
   const myWish = wishData[S.role]?.[mk]||{regular:[], priority:[]};
   const now = new Date(), deadline = wishSettings.deadlineDay||25;
-  const isExpired = now.getFullYear() >= wm.getFullYear() && now.getMonth() >= wm.getMonth();
-  const isAfterDeadline = now.getDate() > deadline && now.getMonth()+1 === wm.getMonth();
-  const expired = isExpired || isAfterDeadline;
+  // 締切判定：今月の締切日を過ぎているかどうか
+  const expired = false; // 常に申請可能（対象月はgetWishTargetMonthが自動切替）
 
   document.getElementById('wish-title').textContent = s.name + 'さんの希望休申請';
   document.getElementById('wish-month-label').textContent = wm.getFullYear()+'年'+(wm.getMonth()+1)+'月分';
-  document.getElementById('wish-subtitle').textContent = '（翌月提出）';
-  document.getElementById('wish-deadline-disp').textContent = now.getMonth()===wm.getMonth()-1 ? now.getFullYear()+'年'+now.getMonth()+'月'+deadline+'日まで' : '—';
+  // 締切日の表示
+  const deadlineMonth = now.getDate() <= deadline ? now.getMonth()+1 : now.getMonth()+1;
+  document.getElementById('wish-subtitle').textContent = '毎月'+deadline+'日までに提出';
+  document.getElementById('wish-deadline-disp').textContent = now.getFullYear()+'年'+now.getMonth()+'月'+deadline+'日まで';
   document.getElementById('wish-limit-badge').textContent = '上限 '+(wishSettings.limit||9)+'日';
   document.getElementById('wish-priority-badge').textContent = '⭐ 上限 '+(wishSettings.priority||2)+'日';
   document.getElementById('wish-cal-month').textContent = wm.getFullYear()+'年'+(wm.getMonth()+1)+'月';
@@ -2264,19 +2265,27 @@ function renderWishCfgDisplay(){
   if(!el)return;
   const stored=localStorage.getItem('tc_wish_settings');
   if(stored){Object.assign(wishSettings,JSON.parse(stored));}
-  document.getElementById('wish-limit-input').value=wishSettings.limit||9;
-  document.getElementById('wish-priority-input').value=wishSettings.priority||2;
-  document.getElementById('wish-deadline-input').value=wishSettings.deadlineDay||25;
+  // 初期値のセット（既に入力中の場合は上書きしない）
+  const li=document.getElementById('wish-limit-input');
+  const pi=document.getElementById('wish-priority-input');
+  const di=document.getElementById('wish-deadline-input');
+  if(li&&!li.value)li.value=wishSettings.limit||9;
+  if(pi&&pi.value==='')pi.value=wishSettings.priority||2;
+  if(di&&!di.value)di.value=wishSettings.deadlineDay||25;
   el.innerHTML=`現在：上限${wishSettings.limit||9}日 / ⭐上限${wishSettings.priority||2}日 / 毎月${wishSettings.deadlineDay||25}日まで`;
 }
 
 function saveWishSettings(){
-  const l=parseInt(document.getElementById('wish-limit-input').value)||9;
-  const p=parseInt(document.getElementById('wish-priority-input').value)||2;
-  const d=parseInt(document.getElementById('wish-deadline-input').value)||25;
-  wishSettings={limit:l,priority:p,deadlineDay:d};
+  const l=parseInt(document.getElementById('wish-limit-input').value);
+  const p=parseInt(document.getElementById('wish-priority-input').value);
+  const d=parseInt(document.getElementById('wish-deadline-input').value);
+  if(l>0) wishSettings.limit=l;
+  if(p>=0) wishSettings.priority=p;
+  if(d>0&&d<=31) wishSettings.deadlineDay=d;
   localStorage.setItem('tc_wish_settings',JSON.stringify(wishSettings));
-  renderWishCfgDisplay();
+  // 説明文だけ更新（inputは上書きしない）
+  const el=document.getElementById('wish-cfg-display');
+  if(el) el.innerHTML=`現在：上限${wishSettings.limit}日 / ⭐上限${wishSettings.priority}日 / 毎月${wishSettings.deadlineDay}日まで`;
 }
 
 function renderAddStaffForm(){
