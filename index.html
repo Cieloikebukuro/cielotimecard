@@ -161,19 +161,6 @@
   .sb-dot{width:8px;height:8px;border-radius:50%;}
   .sb-dot.on{background:#1D9E75;}
   .sb-dot.off{background:#ccc;}
-
-  /* ===== 確定モーダル ===== */
-  .confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;display:flex;align-items:flex-end;justify-content:center;}
-  .confirm-sheet{background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:440px;max-height:90vh;overflow-y:auto;padding:20px 16px 40px;}
-  .confirm-sheet-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
-  .confirm-table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;}
-  .confirm-table th{background:#f5f5f0;padding:6px 8px;text-align:left;font-size:10px;font-weight:600;color:#888;letter-spacing:.04em;border-bottom:1px solid #e5e5e0;}
-  .confirm-table th.R{text-align:right;}
-  .confirm-table td{padding:7px 8px;border-bottom:0.5px solid #f0f0f0;vertical-align:middle;}
-  .confirm-table td.warn{color:#E24B4A;font-weight:600;}
-  .confirm-table td.note{font-size:11px;color:#888;}
-  .confirm-table tr:last-child td{border-bottom:none;}
-  .confirmed-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;background:#E1F5EE;color:#0F6E56;font-size:10px;font-weight:600;}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -266,8 +253,6 @@
     </div>
     <div class="summary-grid" id="my-summary"></div>
 
-    <!-- 確定ボタンエリア -->
-    <div id="confirm-btn-area"></div>
 
     <button class="edit-hol-btn" onclick="openHolidayEdit()">
       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="12" height="11" rx="2"/><path d="M5 1v4M11 1v4M2 7h12"/></svg>
@@ -574,21 +559,6 @@
 
 </div>
 
-<!-- 確定確認モーダル -->
-<div class="confirm-overlay" id="confirm-overlay" style="display:none;" onclick="if(event.target===this)closeConfirmModal()">
-  <div class="confirm-sheet">
-    <div class="confirm-sheet-hd">
-      <div>
-        <div style="font-size:17px;font-weight:600;color:#1a1a1a;" id="confirm-modal-title">勤怠確認</div>
-        <div style="font-size:12px;color:#888;margin-top:2px;" id="confirm-modal-sub"></div>
-      </div>
-      <button onclick="closeConfirmModal()" style="background:#eee;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:14px;color:#888;">✕</button>
-    </div>
-    <div id="confirm-modal-body"></div>
-    <div id="confirm-modal-actions"></div>
-  </div>
-</div>
-
 <script>
 // =============================================
 // 定数・初期設定
@@ -674,7 +644,6 @@ let S = {
   pinResetTarget: null,
   holMode: null, holMonth: null,
   holData: {}, summerSel: [], curDayType: 'off',
-  confirmPhase: null, // null | 'preview' | 'done'
 };
 
 // =============================================
@@ -855,156 +824,6 @@ async function saveInitialData(){
   }
 }
 
-// =============================================
-// 確定機能 [NEW]
-// =============================================
-
-// その月に確定済みレコードがあるか確認
-function isMonthConfirmedLocal(staffId, mk){
-  const r = getR(staffId);
-  return Object.entries(r).some(([k,v]) => k.startsWith(mk) && v.confirmed === true);
-}
-
-// 月全体を確定する
-async function confirmMonthRecords(staffId, mk){
-  const r = getR(staffId);
-  // ローカル更新
-  Object.entries(r).forEach(([k,v])=>{
-    if(k.startsWith(mk) && v.type && !NON_WORK.includes(v.type)){
-      v.confirmed = true;
-    }
-  });
-  // Supabase更新
-  if(sbConnected){
-    try{
-      await fetch(sbUrl+'/rest/v1/tc_records?staff_id=eq.'+staffId+'&date=gte.'+mk+'-01&date=lte.'+mk+'-31', {
-        method:'PATCH',
-        headers:{'apikey':sbKey,'Authorization':'Bearer '+sbKey,'Content-Type':'application/json','Prefer':'return=minimal'},
-        body:JSON.stringify({confirmed:true, confirmed_at:new Date().toISOString()})
-      });
-    } catch(e){console.error('confirm error:',e);}
-  }
-}
-
-// 確定確認モーダルを開く（1回目：一覧表示）
-function openConfirmModal(){
-  const s = staff.find(x=>x.id===S.role); if(!s) return;
-  const mk = mKey(S.calMonth);
-  const r = getR(S.role);
-  const defStart = getStaffDefault(s, 'start');
-  const defEnd   = getStaffDefault(s, 'end');
-  const defBreak = 60;
-
-  // 出勤日のみ抽出（休暇系除く）
-  const workDays = Object.entries(r)
-    .filter(([k,v]) => k.startsWith(mk) && v.type && !NON_WORK.includes(v.type))
-    .sort(([a],[b]) => a<b?-1:1);
-
-  const DOW=['日','月','火','水','木','金','土'];
-
-  // テーブル行生成
-  let rows = '';
-  if(workDays.length === 0){
-    rows = '<tr><td colspan="4" style="text-align:center;color:#888;padding:16px;font-size:12px;">出勤記録がありません</td></tr>';
-  } else {
-    workDays.forEach(([k,v])=>{
-      const [,mo,d] = k.split('-');
-      const date = new Date(parseInt(mk.split('-')[0]), parseInt(mo)-1, parseInt(d));
-      const dow = DOW[date.getDay()];
-      const storeLabel = v.type==='cielo'
-        ? '<span style="font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:#EBF4FD;color:#185FA5;">C</span>'
-        : '<span style="font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;background:#EAF3DE;color:#27500A;">G</span>';
-
-      // 遅刻・早退チェック
-      const start = v.start || defStart;
-      const end   = v.end   || defEnd;
-      const isLate    = start !== defStart;
-      const isEarly   = end !== defEnd;
-      let lateEarlyCell = '—';
-      if(isLate && isEarly){
-        lateEarlyCell = `<span class="warn">遅刻 ${start}出勤<br>早退 ${end}退勤</span>`;
-      } else if(isLate){
-        lateEarlyCell = `<span class="warn">遅刻 ${start}出勤</span>`;
-      } else if(isEarly){
-        lateEarlyCell = `<span class="warn">早退 ${end}退勤</span>`;
-      }
-
-      // 休憩チェック
-      const breakMin = v.break !== undefined ? v.break : defBreak;
-      const isBreakOdd = breakMin !== defBreak;
-      const breakCell = isBreakOdd
-        ? `<span class="warn">${breakMin}分</span>`
-        : '—';
-
-      rows += `<tr>
-        <td>${parseInt(d)}日 <span class="note">${dow}</span><br>${storeLabel}</td>
-        <td>${lateEarlyCell}</td>
-        <td>${breakCell}</td>
-      </tr>`;
-    });
-  }
-
-  const isConfirmed = isMonthConfirmedLocal(S.role, mk);
-  const m = S.calMonth;
-  const monthLabel = m.getFullYear()+'年'+(m.getMonth()+1)+'月';
-
-  document.getElementById('confirm-modal-title').textContent = monthLabel + '　勤怠確認';
-  document.getElementById('confirm-modal-sub').textContent = s.name + '　出勤' + workDays.length + '日';
-
-  document.getElementById('confirm-modal-body').innerHTML = `
-    <div style="background:#FFF8EC;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#8B6000;line-height:1.7;">
-      所定時間と異なる日のみ内容を表示しています。<br>
-      所定：${defStart}出勤 / ${defEnd}退勤 / 休憩${defBreak}分
-    </div>
-    <table class="confirm-table">
-      <thead><tr>
-        <th>日付・店舗</th>
-        <th>遅刻・早退</th>
-        <th>休憩</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-
-  if(isConfirmed){
-    document.getElementById('confirm-modal-actions').innerHTML = `
-      <div style="background:#E1F5EE;border-radius:10px;padding:12px 14px;text-align:center;">
-        <div class="confirmed-badge" style="margin:0 auto 6px;">✓ 確定済み</div>
-        <div style="font-size:12px;color:#0F6E56;margin-top:4px;">この月の勤怠は確定されています。</div>
-      </div>
-      <button onclick="closeConfirmModal()" style="width:100%;margin-top:10px;padding:12px;font-size:14px;font-weight:600;background:#eee;color:#888;border:none;border-radius:10px;cursor:pointer;">閉じる</button>`;
-  } else {
-    document.getElementById('confirm-modal-actions').innerHTML = `
-      <div style="display:flex;gap:8px;margin-top:4px;">
-        <button onclick="closeConfirmModal()" style="flex:1;padding:13px;font-size:14px;font-weight:600;background:#eee;color:#888;border:none;border-radius:10px;cursor:pointer;">戻って修正</button>
-        <button onclick="doConfirmMonth()" style="flex:1;padding:13px;font-size:14px;font-weight:600;background:#1D9E75;color:#fff;border:none;border-radius:10px;cursor:pointer;">確定する</button>
-      </div>
-      <div style="font-size:11px;color:#888;text-align:center;margin-top:8px;">確定後は編集できなくなります</div>`;
-  }
-
-  document.getElementById('confirm-overlay').style.display='flex';
-}
-
-async function doConfirmMonth(){
-  const mk = mKey(S.calMonth);
-  const s = staff.find(x=>x.id===S.role); if(!s) return;
-  // ボタンを無効化
-  document.getElementById('confirm-modal-actions').innerHTML = '<div style="text-align:center;padding:16px;color:#888;font-size:13px;">確定中...</div>';
-  await confirmMonthRecords(S.role, mk);
-  const m = S.calMonth;
-  const monthLabel = m.getFullYear()+'年'+(m.getMonth()+1)+'月';
-  document.getElementById('confirm-modal-actions').innerHTML = `
-    <div style="background:#E1F5EE;border-radius:10px;padding:16px;text-align:center;">
-      <div style="font-size:24px;margin-bottom:8px;">✅</div>
-      <div style="font-size:15px;font-weight:600;color:#0F6E56;">${monthLabel}の勤怠を確定しました</div>
-      <div style="font-size:12px;color:#888;margin-top:4px;">確定後の編集はオーナーのみ可能です</div>
-    </div>
-    <button onclick="closeConfirmModal();renderMyPage();" style="width:100%;margin-top:10px;padding:12px;font-size:14px;font-weight:600;background:#1D9E75;color:#fff;border:none;border-radius:10px;cursor:pointer;">閉じる</button>`;
-}
-
-function closeConfirmModal(){
-  document.getElementById('confirm-overlay').style.display='none';
-  renderMyPage();
-}
 
 // =============================================
 // トップ画面
@@ -1457,38 +1276,8 @@ function renderMyPage(){
   document.getElementById('my-name').textContent=s.name;
   document.getElementById('my-meta').textContent=S.calMonth.getFullYear()+'年'+(S.calMonth.getMonth()+1)+'月';
   renderMySummary(s.id); renderMyCal(s.id);
-  // 確定ボタンエリア更新
-  renderConfirmBtnArea(s);
 }
 
-function renderConfirmBtnArea(s){
-  const area = document.getElementById('confirm-btn-area');
-  if(!area) return;
-  const mk = mKey(S.calMonth);
-  const isConfirmed = isMonthConfirmedLocal(S.role, mk);
-  const m = S.calMonth;
-  const monthLabel = m.getFullYear()+'年'+(m.getMonth()+1)+'月';
-
-  if(isConfirmed){
-    area.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;background:#E1F5EE;border:1px solid #9FE1CB;border-radius:12px;padding:12px 16px;margin-bottom:1rem;">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-size:18px;">✅</span>
-          <div>
-            <div style="font-size:13px;font-weight:600;color:#0F6E56;">${monthLabel}　確定済み</div>
-            <div style="font-size:11px;color:#888;margin-top:1px;">カレンダーは閲覧のみです</div>
-          </div>
-        </div>
-        <button onclick="openConfirmModal()" style="font-size:11px;padding:5px 10px;border:1px solid #9FE1CB;border-radius:8px;background:#fff;color:#0F6E56;cursor:pointer;">確認</button>
-      </div>`;
-  } else {
-    area.innerHTML = `
-      <button onclick="openConfirmModal()" style="width:100%;padding:13px;font-size:14px;font-weight:600;background:#1a1a1a;color:#fff;border:none;border-radius:12px;cursor:pointer;margin-bottom:1rem;display:flex;align-items:center;justify-content:center;gap:8px;">
-        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 4L6 11l-3-3"/></svg>
-        ${monthLabel}の勤怠を確認・確定する
-      </button>`;
-  }
-}
 
 function renderMySummary(id){
   const r=getR(id), mk=mKey(S.calMonth);
@@ -1514,7 +1303,6 @@ function renderMyCal(staffId){
   document.getElementById('cal-month-label').textContent=m.getFullYear()+'年'+(m.getMonth()+1)+'月';
   const r=getR(staffId), today=new Date();
   const mk=mKey(m);
-  const isConfirmed = isMonthConfirmedLocal(staffId, mk);
   const firstDow=new Date(m.getFullYear(),m.getMonth(),1).getDay();
   const daysInMonth=new Date(m.getFullYear(),m.getMonth()+1,0).getDate();
   const dows=['日','月','火','水','木','金','土'];
@@ -1524,18 +1312,11 @@ function renderMyCal(staffId){
     const k=dKey(m,d), v=r[k]; const t=v?.type||'';
     const isToday=today.getDate()===d&&today.getMonth()===m.getMonth()&&today.getFullYear()===m.getFullYear();
     const cls='cal-day'+(t?' '+TYPE_CLS[t]:'')+(isToday?' today':'');
-    // 確定済みの場合はクリック不可（閲覧のみ）
-    if(isConfirmed){
-      html+=`<div class="${cls}" style="cursor:default;opacity:${t?'1':'0.6'};"><div class="dn">${d}</div><div class="ds">${t?TYPE_LABEL[t]:''}</div></div>`;
-    } else {
-      const clickable=!NON_WORK.includes(t)||t==='absent';
-      const oc=clickable?`onclick="openDayEdit('${k}',${d})"`:' style="cursor:default;"';
-      html+=`<div class="${cls}" ${oc}><div class="dn">${d}</div><div class="ds">${t?TYPE_LABEL[t]:''}</div></div>`;
-    }
+    const clickable=!NON_WORK.includes(t)||t==='absent';
+    const oc=clickable?`onclick="openDayEdit('${k}',${d})"`:' style="cursor:default;"';
+    html+=`<div class="${cls}" ${oc}><div class="dn">${d}</div><div class="ds">${t?TYPE_LABEL[t]:''}</div></div>`;
   }
   document.getElementById('cal-grid').innerHTML=html;
-  // 確定済みの場合は編集エリアを閉じる
-  if(isConfirmed) document.getElementById('day-edit-area').innerHTML='';
 }
 
 // =============================================
@@ -1543,9 +1324,6 @@ function renderMyCal(staffId){
 // =============================================
 function openDayEdit(key,day){
   if(S.editDay===key){S.editDay=null;document.getElementById('day-edit-area').innerHTML='';return;}
-  // 確定済み月はスタッフからの編集不可
-  const mk=key.substring(0,7);
-  if(S.role!=='owner' && isMonthConfirmedLocal(S.role, mk)){return;}
   S.editDay=key;
   const staffObj=staff.find(x=>x.id===S.role);
   const isHourly=staffObj?.isHourly||false;
@@ -1696,7 +1474,6 @@ async function saveDay(key){
   if(rs)r[key].reason=rs.value;
   if(br)r[key].break=parseInt(br.value)||60;
   if(tr)r[key].timeReason=tr.value;
-  r[key].confirmed=false; // 編集したら未確定に戻す
   await sbSaveRecord(S.role,key,r[key]);
   S.editDay=null; document.getElementById('day-edit-area').innerHTML=''; renderMyPage(); resetSess();
 }
@@ -1752,10 +1529,8 @@ function renderAtt(){
   const mk=mKey(m);
   staff.filter(s=>!s.leave).forEach(s=>{
     const b=document.createElement('button');
-    const isConfirmed = isMonthConfirmedLocal(s.id, mk);
     b.className='stab'+(S.attStaff===s.id?' on':'');
-    // 確定済みバッジ表示
-    b.innerHTML = s.name + (isConfirmed ? ' <span style="font-size:9px;vertical-align:middle;background:#1D9E75;color:#fff;padding:1px 5px;border-radius:8px;">確定</span>' : '');
+    b.innerHTML = s.name;
     b.onclick=()=>{S.attStaff=s.id;S.attEditDay=null;document.getElementById('att-edit-area').innerHTML='';document.getElementById('bulk-att-area').innerHTML='';bulkState={store:null,selectedDates:new Set(),mode:'my',staffId:null};renderAtt();};
     tabs.appendChild(b);
   });
@@ -1768,14 +1543,10 @@ function renderAtt(){
   const sumD=entries.filter(([k,v])=>v.type==='summer').length;
   const nyD=entries.filter(([k,v])=>v.type==='newyear').length;
   const abD=entries.filter(([k,v])=>v.type==='absent').length;
-  const isConfirmed = isMonthConfirmedLocal(s.id, mk);
-
   document.getElementById('att-summary').innerHTML=
     '<div class="s-met"><div class="num">'+(cD+gD)+'</div><div class="lbl">出勤日数</div></div>'+
     '<div class="s-met"><div class="num" style="font-size:13px;">C'+cD+' G'+gD+'</div><div class="lbl">店舗別</div></div>'+
-    '<div class="s-met"><div class="num" style="font-size:11px;">'+
-    (isConfirmed?'<span class="confirmed-badge">✓ 確定済</span>':'<span style="color:#BA7517;font-size:11px;">未確定</span>')+
-    '</div><div class="lbl">確定状況</div></div>';
+    '<div class="s-met"><div class="num" style="font-size:11px;">休'+offD+(offLimit!==null?'/'+offLimit:'')+(sumD?' 夏'+sumD:'')+(nyD?' 年'+nyD:'')+(abD?' 欠'+abD:'')+'</div><div class="lbl">休暇区分</div></div>';
 
   const today=new Date(), firstDow=new Date(m.getFullYear(),m.getMonth(),1).getDay(), daysInMonth=new Date(m.getFullYear(),m.getMonth()+1,0).getDate();
   const dows=['日','月','火','水','木','金','土'];
@@ -1804,9 +1575,8 @@ function renderAtt(){
       const breakChanged=bMin!==60;
       const tag=v.type==='cielo'?'<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#EBF4FD;color:#185FA5;">cielo</span>':'<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#EAF3DE;color:#3B6D11;">glam</span>';
       const breakWarn=breakChanged?`<span style="font-size:10px;font-weight:600;padding:1px 6px;border-radius:4px;background:#FFFBEB;color:#713F12;border:0.5px solid #EAB308;">休憩${bMin}分</span>`:'';
-      const confirmedBadge=v.confirmed?'<span style="font-size:9px;background:#E1F5EE;color:#0F6E56;padding:1px 6px;border-radius:6px;font-weight:600;">確定</span>':'';
       logHtml+=`<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:0.5px solid #e5e5e0;cursor:pointer;${breakChanged?'background:#FFFBEB;':''}" onclick="openAttEdit('${k}',${d})">
-        <span style="font-size:13px;font-weight:500;min-width:36px;">${d}日</span>${tag}${breakWarn}${confirmedBadge}
+        <span style="font-size:13px;font-weight:500;min-width:36px;">${d}日</span>${tag}${breakWarn}
         <span style="font-size:12px;font-family:'DM Mono',monospace;color:${breakChanged?'#713F12':'#888'};margin-left:auto;">${v.start||DS} – ${v.end||DE}</span>
         <span style="font-size:11px;color:#2B7FD4;font-weight:600;">編集</span>
       </div>`;
@@ -1840,9 +1610,6 @@ function openAttEdit(key, day){
   const defEnd=getStaffDefault(s,'end');
   const breakMin=v.break!==undefined?v.break:60;
   const breakChanged = breakMin !== 60;
-  const mk=key.substring(0,7);
-  const isConfirmed=isMonthConfirmedLocal(s.id, mk);
-
   const timeSection = `
     <div id="att-time-fields" style="${isAbsent||isOff?'display:none;':''}">
       <div class="time-row"><label>開始</label><input class="time-input" type="time" id="att-edit-start" value="${v.start||defStart}" /></div>
@@ -1863,7 +1630,6 @@ function openAttEdit(key, day){
     <div class="day-edit" style="border-color:#2B7FD4;margin-bottom:1rem;">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:1rem;">
         <div style="font-size:15px;font-weight:500;color:#1a1a1a;flex:1;">${parseInt(mo)}月${parseInt(d)}日　${s.name}</div>
-        ${isConfirmed?'<span class="confirmed-badge">✓ 確定済み</span>':''}
         <span style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:#EBF4FD;color:#185FA5;">オーナー編集</span>
       </div>
       <div class="store-btns" style="flex-wrap:wrap;gap:6px;">
