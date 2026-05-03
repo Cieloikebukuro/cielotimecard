@@ -254,29 +254,48 @@
     <div class="summary-grid" id="my-summary"></div>
 
 
-    <button class="edit-hol-btn" onclick="openHolidayEdit()">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="12" height="11" rx="2"/><path d="M5 1v4M11 1v4M2 7h12"/></svg>
-      公休・夏休みを編集する
+    <!-- ===== メインアクション ===== -->
+    <!-- 出勤入力ボタン（大きく目立つ） -->
+    <button onclick="openBulkInput('my')" style="width:100%;padding:16px;font-size:15px;font-weight:700;background:#2B7FD4;color:#fff;border:none;border-radius:14px;cursor:pointer;margin-bottom:12px;display:flex;align-items:center;justify-content:center;gap:10px;">
+      <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8h6M8 5v6"/></svg>
+      出勤を入力する
     </button>
-    <button class="edit-hol-btn" onclick="openBulkInput('my')" style="background:#EBF4FD;border-color:#B5D4F4;color:#185FA5;">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8h6M8 5v6"/></svg>
-      出勤を一括入力
-    </button>
-    <button class="edit-hol-btn" onclick="openBreakEdit()" style="background:#FEF9C3;border-color:#FDE047;color:#713F12;">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5l2.5 1.5"/></svg>
-      休憩時間を修正する
-    </button>
-    <div id="break-edit-area"></div>
     <div id="bulk-input-area"></div>
-    <button class="edit-hol-btn" onclick="openMyWishReset()" style="background:#FEF3C7;border-color:#FDE68A;color:#92400E;">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8a5 5 0 1 0 10 0A5 5 0 0 0 3 8M8 5v3l2 1"/><path d="M13 3l-2 2"/></svg>
-      希望休をリセットする
+
+    <!-- まとめて反映ボタン（送信確認用） -->
+    <button onclick="resendMonthRecords()" style="width:100%;padding:14px;font-size:14px;font-weight:600;background:#1D9E75;color:#fff;border:none;border-radius:14px;cursor:pointer;margin-bottom:6px;display:flex;align-items:center;justify-content:center;gap:8px;">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 8A5 5 0 1 1 8 3"/><path d="M13 3v5h-5"/></svg>
+      今月の内容を送信する
     </button>
+    <div id="resend-msg" style="font-size:12px;min-height:16px;margin-bottom:12px;text-align:center;color:#1D9E75;"></div>
+
+    <!-- その他の操作（折りたたみ） -->
+    <details style="margin-bottom:1rem;">
+      <summary style="font-size:13px;color:#888;cursor:pointer;padding:8px 0;list-style:none;display:flex;align-items:center;gap:6px;">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6l4 4 4-4"/></svg>
+        その他の操作
+      </summary>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px;">
+        <button class="edit-hol-btn" onclick="openHolidayEdit()" style="margin-bottom:0;">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="12" height="11" rx="2"/><path d="M5 1v4M11 1v4M2 7h12"/></svg>
+          公休・夏休みを編集する
+        </button>
+        <button class="edit-hol-btn" onclick="openBreakEdit()" style="background:#FEF9C3;border-color:#FDE047;color:#713F12;margin-bottom:0;">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5l2.5 1.5"/></svg>
+          休憩時間を修正する
+        </button>
+        <button class="edit-hol-btn" onclick="openMyWishReset()" style="background:#FEF3C7;border-color:#FDE68A;color:#92400E;margin-bottom:0;">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8a5 5 0 1 0 10 0A5 5 0 0 0 3 8M8 5v3l2 1"/><path d="M13 3l-2 2"/></svg>
+          希望休をリセットする
+        </button>
+        <button class="edit-hol-btn" onclick="openMyPinChange()" style="margin-bottom:0;">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="6" r="3"/><path d="M2 14c0-3 2.7-5 6-5s6 2 6 5"/></svg>
+          PINを変更する
+        </button>
+      </div>
+    </details>
+    <div id="break-edit-area"></div>
     <div id="my-wish-reset-area"></div>
-    <button class="edit-hol-btn" onclick="openMyPinChange()" style="margin-bottom:1rem;">
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="6" r="3"/><path d="M2 14c0-3 2.7-5 6-5s6 2 6 5"/></svg>
-      PINを変更する
-    </button>
     <div id="my-pin-area"></div>
     <div class="sec-label">勤怠カレンダー</div>
     <div class="card" style="padding:1rem;">
@@ -899,6 +918,44 @@ function openHolidaySetup(mode,month){
   document.getElementById('hol-title').textContent=S.holMonth.getFullYear()+'年'+(S.holMonth.getMonth()+1)+'月の休暇設定';
   document.getElementById('hol-sub').textContent=mode==='first'?name+'さん、公休と夏休みをまとめて設定してください':'変更する日をタップしてください';
   updateDtBar(); renderHolCal(); renderCountBar(); renderLimitBar(); showScr('holiday');
+}
+
+// =============================================
+// まとめて反映
+// =============================================
+async function resendMonthRecords(){
+  const msg = document.getElementById('resend-msg');
+  if(!sbConnected){msg.style.color='#E24B4A';msg.textContent='Supabase未接続のため反映できません';return;}
+  msg.style.color='#888';msg.textContent='反映中...';
+  const mk = mKey(S.calMonth);
+  const r = getR(S.role);
+  const entries = Object.entries(r).filter(([k])=>k.startsWith(mk));
+  if(entries.length===0){msg.style.color='#888';msg.textContent='この月のデータがありません';return;}
+  let count=0, errCount=0;
+  for(const [key,data] of entries){
+    try{
+      const res=await fetch(sbUrl+'/rest/v1/tc_records?on_conflict=staff_id,date',{
+        method:'POST',
+        headers:{'apikey':sbKey,'Authorization':'Bearer '+sbKey,'Content-Type':'application/json','Prefer':'resolution=merge-duplicates,return=minimal'},
+        body:JSON.stringify({
+          staff_id:S.role, date:key, type:data.type,
+          start_time:data.start||DS, end_time:data.end||DE,
+          reason:data.reason||'', time_reason:data.timeReason||'',
+          break_minutes:data.break!==undefined?data.break:60,
+          confirmed:data.confirmed||false
+        })
+      });
+      if(res.ok) count++; else errCount++;
+    } catch(e){errCount++;}
+  }
+  if(errCount===0){
+    msg.style.color='#1D9E75';
+    msg.textContent=`✓ ${count}件を反映しました`;
+  } else {
+    msg.style.color='#E24B4A';
+    msg.textContent=`${count}件成功 / ${errCount}件失敗`;
+  }
+  setTimeout(()=>msg.textContent='',4000);
 }
 
 // =============================================
