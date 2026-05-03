@@ -323,7 +323,9 @@
       <button onclick="attMove(-1)">←</button>
       <div class="cal-month" id="att-month-label"></div>
       <button onclick="attMove(1)">→</button>
+      <button onclick="reloadData()" id="reload-btn" style="padding:5px 10px;font-size:12px;border:0.5px solid #ccc;border-radius:8px;background:#eee;color:#888;cursor:pointer;" title="最新データを取得">↻ 更新</button>
     </div>
+    <div id="reload-msg" style="font-size:11px;color:#888;text-align:right;margin-top:-16px;margin-bottom:10px;min-height:16px;"></div>
     <div class="att-tabs" id="att-tabs"></div>
     <div class="summary-grid" id="att-summary"></div>
     <div style="display:flex;gap:8px;margin-bottom:1rem;">
@@ -1593,6 +1595,19 @@ async function confirmAttReset(){
 }
 
 function attMove(d){S.attMonth=new Date(S.attMonth.getFullYear(),S.attMonth.getMonth()+d,1);S.attEditDay=null;document.getElementById('att-edit-area').innerHTML='';renderAtt();}
+
+async function reloadData(){
+  const btn=document.getElementById('reload-btn');
+  const msg=document.getElementById('reload-msg');
+  if(!sbConnected){msg.style.color='#E24B4A';msg.textContent='Supabase未接続';setTimeout(()=>msg.textContent='',3000);return;}
+  btn.textContent='↻ 読込中...';btn.disabled=true;
+  await loadFromSupabase();
+  btn.textContent='↻ 更新';btn.disabled=false;
+  msg.style.color='#1D9E75';
+  msg.textContent='✓ 最新データを取得しました（'+new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})+'）';
+  setTimeout(()=>msg.textContent='',4000);
+  renderAtt();
+}
 
 function renderAtt(){
   const m=S.attMonth;
