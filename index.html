@@ -2281,11 +2281,15 @@ function renderWishView(){
     activeStaff.forEach((s,i)=>{
       const myWish=wishData[s.id]?.[mk];
       const isPri=myWish?.priority?.includes(d),isReg=myWish?.regular?.includes(d);
-      if(isPri||isReg){dots+=`<div style="width:6px;height:6px;border-radius:50%;background:${WISH_COLORS[i%WISH_COLORS.length]};${isPri?'border:1.5px solid #F59E0B;':''}"></div>`;}
+      if(isPri){
+        dots+=`<div style="width:10px;height:10px;border-radius:50%;background:${WISH_COLORS[i%WISH_COLORS.length]};border:2px solid #F59E0B;display:flex;align-items:center;justify-content:center;font-size:6px;color:#fff;font-weight:bold;">★</div>`;
+      } else if(isReg){
+        dots+=`<div style="width:10px;height:10px;border-radius:50%;background:${WISH_COLORS[i%WISH_COLORS.length]};"></div>`;
+      }
     });
-    calHtml+=`<div style="aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:6px;border:0.5px solid #f0f0f0;">
+    calHtml+=`<div style="aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:4px;border-radius:6px;border:0.5px solid #f0f0f0;">
       <div style="font-size:11px;color:${isSun?'#C00000':isSat?'#2980B9':'#1a1a1a'};">${d}</div>
-      <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:2px;margin-top:2px;">${dots}</div>
+      <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:2px;margin-top:3px;">${dots}</div>
     </div>`;
   }
   document.getElementById('wishview-cal-grid').innerHTML=calHtml;
@@ -2307,50 +2311,104 @@ function renderWishView(){
 function exportWishPDF(){
   const m=wishViewMonth;
   const mk=mKey(m);
-  const w=window.open('','_blank','width=800,height=600');
+  const w=window.open('','_blank','width=1100,height=700');
   const activeStaff=staff.filter(s=>!s.leave);
   const daysInMonth=new Date(m.getFullYear(),m.getMonth()+1,0).getDate();
   const firstDow=new Date(m.getFullYear(),m.getMonth(),1).getDay();
   const DOW=['日','月','火','水','木','金','土'];
-  let calRows='';
-  let days=['','','','','','',''];
-  for(let i=0;i<firstDow;i++) days[i]='';
+
+  // 凡例HTML
+  const legendHtml=activeStaff.map((s,si)=>`
+    <span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;font-size:12px;">
+      <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${WISH_COLORS[si%WISH_COLORS.length]};"></span>
+      ${s.name}
+    </span>`).join('');
+
+  // カレンダーセル
   let cells=[];
   for(let i=0;i<firstDow;i++) cells.push('');
   for(let d=1;d<=daysInMonth;d++) cells.push(d);
   while(cells.length%7!==0) cells.push('');
+
+  let calRows='';
   for(let r=0;r<cells.length;r+=7){
     const row=cells.slice(r,r+7);
-    calRows+=`<tr>${row.map((d,i)=>{
-      if(!d)return '<td></td>';
-      const markerDots=activeStaff.map((s,si)=>{
+    calRows+=`<tr>${row.map((d,dow)=>{
+      if(!d) return '<td style="background:#fafafa;"></td>';
+      const isSun=dow===0, isSat=dow===6;
+      const dayColor=isSun?'#C00000':isSat?'#1a56db':'#1a1a1a';
+      const dayBg=isSun?'#FFF5F5':isSat?'#F0F5FF':'#fff';
+      // ドット生成
+      const dots=activeStaff.map((s,si)=>{
         const myWish=wishData[s.id]?.[mk];
-        const isPri=myWish?.priority?.includes(d),isReg=myWish?.regular?.includes(d);
-        if(!isPri&&!isReg)return '';
-        return `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${WISH_COLORS[si%WISH_COLORS.length]};${isPri?'border:1px solid orange;':''}margin-right:2px;"></span>`;
+        const isPri=myWish?.priority?.includes(d);
+        const isReg=myWish?.regular?.includes(d);
+        if(!isPri&&!isReg) return '';
+        const color=WISH_COLORS[si%WISH_COLORS.length];
+        if(isPri){
+          // 優先：星形バッジ風（丸+太枠+★）
+          return `<span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:${color};border:2px solid #F59E0B;font-size:8px;color:#fff;font-weight:bold;" title="${s.name}（優先）">★</span>`;
+        } else {
+          return `<span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${color};" title="${s.name}"></span>`;
+        }
       }).join('');
-      const isSun=i===0,isSat=i===6;
-      return `<td style="font-size:11px;color:${isSun?'red':isSat?'blue':'black'};vertical-align:top;padding:4px;">
-        <div>${d}</div><div style="display:flex;flex-wrap:wrap;gap:1px;margin-top:2px;">${markerDots}</div>
+      return `<td style="vertical-align:top;padding:6px 4px;background:${dayBg};min-height:60px;">
+        <div style="font-size:13px;font-weight:600;color:${dayColor};margin-bottom:4px;">${d}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:3px;">${dots}</div>
       </td>`;
     }).join('')}</tr>`;
   }
-  w.document.write(`<html><head><title>希望休一覧 ${mk}</title>
-  <style>body{font-family:sans-serif;padding:20px;}table{border-collapse:collapse;}td,th{border:1px solid #ddd;padding:6px 8px;font-size:12px;}th{background:#f0f0f0;}</style></head>
-  <body>
-  <h2>${m.getFullYear()}年${m.getMonth()+1}月 希望休一覧</h2>
-  <table style="width:100%;margin-bottom:20px;"><thead><tr>${DOW.map((d,i)=>`<th style="color:${i===0?'red':i===6?'blue':'black'}">${d}</th>`).join('')}</tr></thead><tbody>${calRows}</tbody></table>
-  <h3>提出状況</h3>
-  <table style="width:100%;"><thead><tr><th>スタッフ</th><th>希望日</th></tr></thead><tbody>
-  ${activeStaff.map((s,si)=>{
+
+  // 提出状況テーブル
+  const statusRows=activeStaff.map((s,si)=>{
     const myWish=wishData[s.id]?.[mk]||{regular:[],priority:[]};
-    const allDays=[...(myWish.priority||[]),...(myWish.regular||[])].sort((a,b)=>a-b);
-    return `<tr><td>${s.name}</td><td>${allDays.map(d=>`${d}日${(myWish.priority||[]).includes(d)?'⭐':''}`).join(', ')||'なし'}</td></tr>`;
-  }).join('')}
-  </tbody></table>
-  <div style="margin-top:16px;font-size:11px;color:#888;">●=通常 ★=⭐優先希望休</div>
-  <script>window.print();</scr`+'ipt></body></html>');
+    const priDays=(myWish.priority||[]).sort((a,b)=>a-b);
+    const regDays=(myWish.regular||[]).sort((a,b)=>a-b);
+    const total=priDays.length+regDays.length;
+    const priHtml=priDays.map(d=>`<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#FEF3C7;color:#92400E;font-size:11px;margin:2px;">★${d}日</span>`).join('');
+    const regHtml=regDays.map(d=>`<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#EBF4FD;color:#185FA5;font-size:11px;margin:2px;">${d}日</span>`).join('');
+    return `<tr>
+      <td style="white-space:nowrap;">
+        <span style="display:inline-flex;align-items:center;gap:6px;">
+          <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${WISH_COLORS[si%WISH_COLORS.length]};"></span>
+          ${s.name}
+        </span>
+      </td>
+      <td style="text-align:center;">${total}日</td>
+      <td>${priHtml}${regHtml}${total===0?'<span style="color:#aaa;">なし</span>':''}</td>
+    </tr>`;
+  }).join('');
+
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+  <title>希望休一覧 ${mk}</title>
+  <style>
+    @page { size: A4 landscape; margin: 15mm; }
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; padding: 16px; color: #1a1a1a; }
+    h2 { font-size: 18px; margin: 0 0 8px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 14px; padding: 8px 12px; background: #f8f8f8; border-radius: 8px; }
+    .cal-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    .cal-table th { background: #f0f0f0; border: 1px solid #ddd; padding: 6px; font-size: 12px; text-align: center; }
+    .cal-table td { border: 1px solid #e0e0e0; padding: 4px; min-width: 80px; height: 64px; }
+    .status-table { width: 100%; border-collapse: collapse; }
+    .status-table th { background: #f0f0f0; border: 1px solid #ddd; padding: 8px; font-size: 12px; text-align: left; }
+    .status-table td { border: 1px solid #e0e0e0; padding: 8px; font-size: 12px; }
+    .note { margin-top: 12px; font-size: 11px; color: #888; }
+  </style></head><body>
+  <h2>${m.getFullYear()}年${m.getMonth()+1}月　希望休一覧</h2>
+  <div class="legend">${legendHtml}</div>
+  <table class="cal-table">
+    <thead><tr>${DOW.map((d,i)=>`<th style="color:${i===0?'#C00000':i===6?'#1a56db':'#333'}">${d}</th>`).join('')}</tr></thead>
+    <tbody>${calRows}</tbody>
+  </table>
+  <table class="status-table">
+    <thead><tr><th style="width:80px;">スタッフ</th><th style="width:50px;">合計</th><th>希望日</th></tr></thead>
+    <tbody>${statusRows}</tbody>
+  </table>
+  <div class="note">● 通常希望休　★ 優先希望休（黄枠）</div>
+  </body></html>`);
   w.document.close();
+  setTimeout(()=>w.print(),500);
 }
 
 // =============================================
