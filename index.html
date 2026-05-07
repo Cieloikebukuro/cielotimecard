@@ -554,7 +554,17 @@
       </div>
       <div id="wish-cal-grid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;"></div>
     </div>
-    <button class="btn-p" id="wish-submit-btn" onclick="submitWish()" style="width:100%;margin-top:4px;">提出する</button>
+    <div style="display:flex;gap:8px;margin-top:4px;">
+      <button class="btn-p" id="wish-submit-btn" onclick="submitWish()" style="flex:1;">提出する</button>
+      <button onclick="confirmWishReset()" style="padding:12px 16px;font-size:13px;font-weight:600;background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;border-radius:14px;cursor:pointer;">リセット</button>
+    </div>
+    <div id="wish-reset-confirm" style="display:none;background:#FCEBEB;border:1px solid #F7C1C1;border-radius:10px;padding:12px;margin-top:8px;text-align:center;">
+      <div style="font-size:13px;font-weight:500;color:#A32D2D;margin-bottom:8px;">この月の希望休をリセットしますか？</div>
+      <div style="display:flex;gap:8px;justify-content:center;">
+        <button id="wish-reset-exec-btn" onclick="" style="padding:8px 20px;font-size:13px;font-weight:600;background:#A32D2D;color:#fff;border:none;border-radius:8px;cursor:pointer;">リセット</button>
+        <button onclick="document.getElementById('wish-reset-confirm').style.display='none'" style="padding:8px 20px;font-size:13px;background:#eee;color:#888;border:none;border-radius:8px;cursor:pointer;">キャンセル</button>
+      </div>
+    </div>
     <div class="ok-msg" id="wish-ok" style="text-align:center;"></div>
   </div>
 
@@ -2166,20 +2176,33 @@ function toggleWishDay(d){
   const priLimit=wishSettings.priority||2;
 
   if(myWish.priority?.includes(d)){
+    // 優先 → 解除
     myWish.priority=myWish.priority.filter(x=>x!==d);
   } else if(myWish.regular?.includes(d)){
+    // 通常 → 優先（上限未満なら）、上限なら → 解除
+    myWish.regular=myWish.regular.filter(x=>x!==d);
     if((myWish.priority?.length||0)<priLimit){
-      myWish.regular=myWish.regular.filter(x=>x!==d);
       if(!myWish.priority)myWish.priority=[];
       myWish.priority.push(d);
     }
+    // 優先上限の場合はそのまま解除（regularから削除済み）
   } else {
+    // 未選択 → 通常（全体上限未満なら）
     const total=(myWish.regular?.length||0)+(myWish.priority?.length||0);
     if(total>=limit)return;
     if(!myWish.regular)myWish.regular=[];
     myWish.regular.push(d);
   }
   renderWish();
+}
+
+function confirmWishReset(){
+  const el=document.getElementById('wish-reset-confirm');
+  if(!el) return;
+  const mk=mKey(wishMonth);
+  const execBtn=document.getElementById('wish-reset-exec-btn');
+  if(execBtn) execBtn.onclick=()=>doMyWishReset(mk);
+  el.style.display=el.style.display==='none'?'block':'none';
 }
 
 async function submitWish(){
@@ -2216,10 +2239,20 @@ function openMyWishReset(){
   </div>`;
 }
 
-function doMyWishReset(mk){
+async function doMyWishReset(mk){
   if(!wishData[S.role])wishData[S.role]={};
   wishData[S.role][mk]={regular:[],priority:[]};
   document.getElementById('my-wish-reset-area').innerHTML='';
+  // Supabaseにも反映
+  if(sbConnected){
+    try{
+      await sbFetch('tc_wish?on_conflict=staff_id,month',{
+        method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+        body:JSON.stringify({staff_id:S.role,month:mk,regular:[],priority:[]})
+      });
+    }catch(e){}
+  }
   renderWish();
 }
 
@@ -2617,10 +2650,19 @@ function buildKyuryoSheet(wb,m){
   const workingDaysBase=daysInMonth-offDays;
   const ws={};
 
-  // タイトル・ヘッダー
+  // 列定義
+  // A=名前 B=区分 C=出勤 D=cielo日 E=glam日 F=公休
+  // G=月給 H=日割 I=cielo給与 J=glam給与 K=時間外
+  // L=cielo交通費(半額) M=glam交通費(半額) N=cielo合計(交通費除く) O=glam合計(交通費除く)
   let r=1;
   wsSet(ws,1,r,m.getFullYear()+'年'+(m.getMonth()+1)+'月　給与計算'); r++;r++;
-  const hdrs=['スタッフ名','雇用区分','出勤合計','cielo日数','glam日数','公休日数','月給','日割単価','cielo給与','glam給与','交通費','時間外手当','cielo合計','glam合計'];
+  const hdrs=[
+    'スタッフ名','雇用区分','出勤合計','cielo日数','glam日数','公休日数',
+    '月給','日割単価',
+    'cielo給与','glam給与','時間外手当',
+    'cielo交通費(半額)','glam交通費(半額)',
+    'cielo合計','glam合計'
+  ];
   hdrs.forEach((h,i)=>wsSet(ws,i+1,r,h));
   r++;
 
@@ -2635,6 +2677,7 @@ function buildKyuryoSheet(wb,m){
     const gD=work.filter(([k,v])=>v.type==='glam').length;
     const offD=entries.filter(([k,v])=>v.type==='off').length;
     const trans=s.transport||0;
+    const tC=Math.round(trans/2), tG=trans-tC;
 
     if(s.isHourly){
       const wage=s.hourlyWage||1200;
@@ -2647,32 +2690,35 @@ function buildKyuryoSheet(wb,m){
         if(wMin>0){const h=wMin/60;totalPay+=Math.round(wage*Math.min(h,8))+Math.round(wage*1.25*Math.max(h-8,0));}
       });
       wsSet(ws,1,r,s.name); wsSet(ws,2,r,'アルバイト');
-      wsSet(ws,3,r,work.length,''); wsSet(ws,4,r,cD); wsSet(ws,5,r,gD); wsSet(ws,6,r,offD);
+      wsSet(ws,3,r,work.length); wsSet(ws,4,r,cD); wsSet(ws,5,r,gD); wsSet(ws,6,r,offD);
       wsSet(ws,7,r,wage+'円/時'); wsSet(ws,8,r,'—');
-      wsSet(ws,9,r,'—'); wsSet(ws,10,r,'—');
-      wsSet(ws,11,r,trans); wsSet(ws,12,r,'—');
-      wsSet(ws,13,r,'—'); wsSet(ws,14,r,totalPay);
+      wsSet(ws,9,r,'—'); wsSet(ws,10,r,'—'); wsSet(ws,11,r,'—');
+      wsSet(ws,12,r,tC); wsSet(ws,13,r,tG);
+      wsSet(ws,14,r,'—'); wsSet(ws,15,r,totalPay);
     } else {
       const mon=salary[s.id]||0;
       const daily=workingDaysBase>0?Math.round(mon/workingDaysBase):0;
       const {totalOtPay:otPay}=calcMonthlyOt(s.id,mk);
       let otC=0,otG=0;
       work.forEach(([k,v])=>{const {otPay:p}=calcOtForDay(v,mon);if(v.type==='cielo')otC+=p;else otG+=p;});
-      const tC=Math.round(trans/2),tG=trans-tC;
 
       wsSet(ws,1,r,s.name); wsSet(ws,2,r,'月給制');
       wsSet(ws,3,r,work.length); wsSet(ws,4,r,cD); wsSet(ws,5,r,gD); wsSet(ws,6,r,offD);
       wsSet(ws,7,r,mon); wsSet(ws,8,r,daily);
-      // cielo給与=日割×cielo日数 → 数式
+      // I: cielo給与 = 日割 × cielo日数
       wsSet(ws,9,r,`${col(8)}${r}*${col(4)}${r}`,true);
-      // glam給与=日割×glam日数 → 数式
+      // J: glam給与 = 日割 × glam日数
       wsSet(ws,10,r,`${col(8)}${r}*${col(5)}${r}`,true);
-      wsSet(ws,11,r,trans);
-      wsSet(ws,12,r,otPay);
-      // cielo合計=cielo給与+交通費半分+時間外(cielo分)
-      wsSet(ws,13,r,`${col(9)}${r}+ROUND(${col(11)}${r}/2,0)+${otC}`,true);
-      // glam合計=glam給与+交通費半分+時間外(glam分)
-      wsSet(ws,14,r,`${col(10)}${r}+${col(11)}${r}-ROUND(${col(11)}${r}/2,0)+${otG}`,true);
+      // K: 時間外手当
+      wsSet(ws,11,r,otPay);
+      // L: cielo交通費(半額)
+      wsSet(ws,12,r,tC);
+      // M: glam交通費(半額)
+      wsSet(ws,13,r,tG);
+      // N: cielo合計 = cielo給与 + 時間外(cielo分) ※交通費除く
+      wsSet(ws,14,r,`${col(9)}${r}+${otC}`,true);
+      // O: glam合計 = glam給与 + 時間外(glam分) ※交通費除く
+      wsSet(ws,15,r,`${col(10)}${r}+${otG}`,true);
       monthlyRows.push(r);
     }
     r++;
@@ -2681,12 +2727,18 @@ function buildKyuryoSheet(wb,m){
   // 合計行
   if(monthlyRows.length>0){
     wsSet(ws,1,r,'合計');
-    [3,4,5,6,7,9,10,11,12,13,14].forEach(c=>{
+    [3,4,5,6,7,9,10,11,12,13,14,15].forEach(c=>{
       wsSet(ws,c,r,`SUM(${col(c)}${dataStartRow}:${col(c)}${r-1})`,true);
     });
   }
 
-  ws['!cols']=[{wch:10},{wch:8},{wch:8},{wch:8},{wch:8},{wch:8},{wch:10},{wch:10},{wch:12},{wch:12},{wch:10},{wch:10},{wch:12},{wch:12}];
+  ws['!cols']=[
+    {wch:10},{wch:8},{wch:8},{wch:8},{wch:8},{wch:8},
+    {wch:10},{wch:10},
+    {wch:12},{wch:12},{wch:10},
+    {wch:12},{wch:12},
+    {wch:12},{wch:12}
+  ];
   XLSX.utils.book_append_sheet(wb,ws,'給与割');
 }
 
