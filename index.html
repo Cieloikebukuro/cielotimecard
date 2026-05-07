@@ -288,6 +288,10 @@
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8a5 5 0 1 0 10 0A5 5 0 0 0 3 8M8 5v3l2 1"/><path d="M13 3l-2 2"/></svg>
           希望休をリセットする
         </button>
+        <button class="edit-hol-btn" onclick="openMyTransport()" style="margin-bottom:0;">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 13h12M4 13V7l4-4 4 4v6"/><path d="M6 13v-3h4v3"/></svg>
+          交通費を変更する
+        </button>
         <button class="edit-hol-btn" onclick="openMyPinChange()" style="margin-bottom:0;">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="6" r="3"/><path d="M2 14c0-3 2.7-5 6-5s6 2 6 5"/></svg>
           PINを変更する
@@ -1122,6 +1126,36 @@ async function updateBreak(key, el){
   el.style.borderColor=changed?'#EAB308':'#ccc';
   el.style.background=changed?'#FFFBEB':'#f5f5f0';
   el.style.color=changed?'#713F12':'#1a1a1a';
+}
+
+function openMyTransport(){
+  const s=staff.find(x=>x.id===S.role);
+  if(!s) return;
+  const area=document.getElementById('my-pin-area');
+  area.innerHTML=`
+    <div style="background:#f9f9f9;border:0.5px solid #ddd;border-radius:12px;padding:14px;margin-bottom:12px;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:10px;">交通費（月額）</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:13px;">¥</span>
+        <input type="number" id="my-transport-input" value="${s.transport||0}"
+          style="flex:1;padding:8px;font-size:14px;border:0.5px solid #ccc;border-radius:8px;text-align:right;"
+          placeholder="例：10000" />
+        <button onclick="saveMyTransport()" style="padding:8px 14px;font-size:13px;font-weight:600;background:#2B7FD4;color:#fff;border:none;border-radius:8px;cursor:pointer;">保存</button>
+      </div>
+      <div id="my-transport-msg" style="font-size:12px;min-height:16px;margin-top:8px;color:#1D9E75;"></div>
+    </div>`;
+}
+
+async function saveMyTransport(){
+  const s=staff.find(x=>x.id===S.role);
+  if(!s) return;
+  const val=parseInt(document.getElementById('my-transport-input').value)||0;
+  s.transport=val;
+  const msg=document.getElementById('my-transport-msg');
+  msg.textContent='保存中...'; msg.style.color='#888';
+  await sbSaveStaff(s);
+  msg.textContent='✓ 保存しました（¥'+val.toLocaleString()+'）'; msg.style.color='#1D9E75';
+  setTimeout(()=>{msg.textContent='';},3000);
 }
 
 function openMyPinChange(){
@@ -2531,7 +2565,28 @@ async function confirmResetData(){
 // =============================================
 // Excel出力
 // =============================================
-function fmtYen(n){ return n===0?'—':'¥'+n.toLocaleString(); }
+// ===== Excel出力ユーティリティ =====
+function col(n){ // 列番号→アルファベット
+  let s='';
+  while(n>0){s=String.fromCharCode(65+(n-1)%26)+s;n=Math.floor((n-1)/26);}
+  return s;
+}
+function cr(c,r){ return col(c)+r; } // セル参照
+
+function wsSet(ws, c, r, val, isFormula){
+  const addr=cr(c,r);
+  if(isFormula){ ws[addr]={f:val}; }
+  else { ws[addr]={v:val, t:typeof val==='number'?'n':'s'}; }
+  // レンジ更新
+  if(!ws['!ref']) ws['!ref']='A1';
+  const ref=XLSX.utils.decode_range(ws['!ref']);
+  const cc=c-1, rr=r-1;
+  if(cc<ref.s.c)ref.s.c=cc;
+  if(rr<ref.s.r)ref.s.r=rr;
+  if(cc>ref.e.c)ref.e.c=cc;
+  if(rr>ref.e.r)ref.e.r=rr;
+  ws['!ref']=XLSX.utils.encode_range(ref);
+}
 
 function exportExcel(){
   if(!window.XLSX){alert('XLSX未読込');return;}
@@ -2540,244 +2595,323 @@ function exportExcel(){
   const mk=mKey(m);
   const daysInMonth=new Date(m.getFullYear(),m.getMonth()+1,0).getDate();
 
-  // シート1: 給与割
   buildKyuryoSheet(wb,m);
 
-  // シート2〜: アシスタント別スタイリスト負担表（月給制のみ）
   const cellMap={};
   staff.filter(s=>!s.leave&&!s.isHourly).forEach(s=>{
     cellMap[s.id]=buildAssistantSheet(wb,s,m,mk,daysInMonth);
   });
 
-  // スタイリスト別集計シート
   buildStylistSummarySheet(wb,m,mk,daysInMonth,cellMap);
-
-  // アルバイトシート
   staff.filter(s=>!s.leave&&s.isHourly).forEach(s=>buildHourlySheet(wb,s,m));
 
   const fname=m.getFullYear()+'年'+(m.getMonth()+1)+'月_給与計算.xlsx';
   XLSX.writeFile(wb,fname);
 }
 
+// ===== 給与割シート =====
 function buildKyuryoSheet(wb,m){
   const mk=mKey(m);
   const daysInMonth=new Date(m.getFullYear(),m.getMonth()+1,0).getDate();
   const offDays=offLimit!==null?offLimit:0;
   const workingDaysBase=daysInMonth-offDays;
+  const ws={};
 
-  const aoa=[
-    [m.getFullYear()+'年'+(m.getMonth()+1)+'月　給与計算'],
-    [''],
-    ['スタッフ名','雇用区分','出勤(合計)','cielo日数','glam日数','公休','月給/時給','日割り単価','cielo給与','glam給与','交通費','時間外手当','cielo合計','glam合計'],
-  ];
+  // タイトル・ヘッダー
+  let r=1;
+  wsSet(ws,1,r,m.getFullYear()+'年'+(m.getMonth()+1)+'月　給与計算'); r++;r++;
+  const hdrs=['スタッフ名','雇用区分','出勤合計','cielo日数','glam日数','公休日数','月給','日割単価','cielo給与','glam給与','交通費','時間外手当','cielo合計','glam合計'];
+  hdrs.forEach((h,i)=>wsSet(ws,i+1,r,h));
+  r++;
+
+  const dataStartRow=r;
+  const monthlyRows=[];
+
   staff.filter(s=>!s.leave).forEach(s=>{
-    const r=getR(s.id);
-    const entries=Object.entries(r).filter(([k])=>k.startsWith(mk));
+    const rv=getR(s.id);
+    const entries=Object.entries(rv).filter(([k])=>k.startsWith(mk));
     const work=entries.filter(([k,v])=>v.type&&!NON_WORK.includes(v.type));
     const cD=work.filter(([k,v])=>v.type==='cielo').length;
     const gD=work.filter(([k,v])=>v.type==='glam').length;
     const offD=entries.filter(([k,v])=>v.type==='off').length;
     const trans=s.transport||0;
+
     if(s.isHourly){
       const wage=s.hourlyWage||1200;
       let totalPay=0;
       work.forEach(([k,v])=>{
         const [sh,sm]=(v.start||'10:00').split(':').map(Number);
         const [eh,em]=(v.end||'19:30').split(':').map(Number);
-        const breakMin=v.break!==undefined?v.break:60;
-        const workMin=(eh*60+em)-(sh*60+sm)-breakMin;
-        if(workMin>0){const h=workMin/60;totalPay+=Math.round(wage*Math.min(h,8))+Math.round(wage*1.25*Math.max(h-8,0));}
+        const bMin=v.break!==undefined?v.break:60;
+        const wMin=(eh*60+em)-(sh*60+sm)-bMin;
+        if(wMin>0){const h=wMin/60;totalPay+=Math.round(wage*Math.min(h,8))+Math.round(wage*1.25*Math.max(h-8,0));}
       });
-      aoa.push([s.name,'アルバイト',work.length,cD,gD,offD,'¥'+wage+'/時','—','—','—','¥'+(trans/2),'—','—','¥'+totalPay]);
+      wsSet(ws,1,r,s.name); wsSet(ws,2,r,'アルバイト');
+      wsSet(ws,3,r,work.length,''); wsSet(ws,4,r,cD); wsSet(ws,5,r,gD); wsSet(ws,6,r,offD);
+      wsSet(ws,7,r,wage+'円/時'); wsSet(ws,8,r,'—');
+      wsSet(ws,9,r,'—'); wsSet(ws,10,r,'—');
+      wsSet(ws,11,r,trans); wsSet(ws,12,r,'—');
+      wsSet(ws,13,r,'—'); wsSet(ws,14,r,totalPay);
     } else {
       const mon=salary[s.id]||0;
       const daily=workingDaysBase>0?Math.round(mon/workingDaysBase):0;
-      const cAmt=Math.round(daily*cD);
-      const gAmt=Math.round(daily*gD);
-      const tC=Math.round(trans/2);
-      const {totalOtH,totalOtPay:otPay}=calcMonthlyOt(s.id,mk);
+      const {totalOtPay:otPay}=calcMonthlyOt(s.id,mk);
       let otC=0,otG=0;
       work.forEach(([k,v])=>{const {otPay:p}=calcOtForDay(v,mon);if(v.type==='cielo')otC+=p;else otG+=p;});
-      aoa.push([s.name,'月給制',work.length,cD,gD,offD,'¥'+mon,daily,'¥'+cAmt,'¥'+gAmt,'¥'+trans,'¥'+otPay,'¥'+(cAmt+tC+otC),'¥'+(gAmt+(trans-tC)+otG)]);
+      const tC=Math.round(trans/2),tG=trans-tC;
+
+      wsSet(ws,1,r,s.name); wsSet(ws,2,r,'月給制');
+      wsSet(ws,3,r,work.length); wsSet(ws,4,r,cD); wsSet(ws,5,r,gD); wsSet(ws,6,r,offD);
+      wsSet(ws,7,r,mon); wsSet(ws,8,r,daily);
+      // cielo給与=日割×cielo日数 → 数式
+      wsSet(ws,9,r,`${col(8)}${r}*${col(4)}${r}`,true);
+      // glam給与=日割×glam日数 → 数式
+      wsSet(ws,10,r,`${col(8)}${r}*${col(5)}${r}`,true);
+      wsSet(ws,11,r,trans);
+      wsSet(ws,12,r,otPay);
+      // cielo合計=cielo給与+交通費半分+時間外(cielo分)
+      wsSet(ws,13,r,`${col(9)}${r}+ROUND(${col(11)}${r}/2,0)+${otC}`,true);
+      // glam合計=glam給与+交通費半分+時間外(glam分)
+      wsSet(ws,14,r,`${col(10)}${r}+${col(11)}${r}-ROUND(${col(11)}${r}/2,0)+${otG}`,true);
+      monthlyRows.push(r);
     }
+    r++;
   });
-  const ws=XLSX.utils.aoa_to_sheet(aoa);
+
+  // 合計行
+  if(monthlyRows.length>0){
+    wsSet(ws,1,r,'合計');
+    [3,4,5,6,7,9,10,11,12,13,14].forEach(c=>{
+      wsSet(ws,c,r,`SUM(${col(c)}${dataStartRow}:${col(c)}${r-1})`,true);
+    });
+  }
+
+  ws['!cols']=[{wch:10},{wch:8},{wch:8},{wch:8},{wch:8},{wch:8},{wch:10},{wch:10},{wch:12},{wch:12},{wch:10},{wch:10},{wch:12},{wch:12}];
   XLSX.utils.book_append_sheet(wb,ws,'給与割');
 }
 
-// アシスタント別スタイリスト負担シート
+// ===== アシスタント別シート =====
 function buildAssistantSheet(wb,s,m,mk,daysInMonth){
   const year=m.getFullYear(),month=m.getMonth()+1;
   const DOW=['日','月','火','水','木','金','土'];
-  const r=getR(s.id);
+  const rv=getR(s.id);
   const mon=salary[s.id]||0;
   const offDays=offLimit!==null?offLimit:0;
   const workingDaysBase=new Date(m.getFullYear(),m.getMonth()+1,0).getDate()-offDays;
   const daily=workingDaysBase>0?Math.round(mon/workingDaysBase):0;
-  const halfDaily=Math.round(daily/2); // ST負担 = 日割り÷2
+  const halfDaily=Math.round(daily/2);
 
-  const work=Object.entries(r).filter(([k,v])=>k.startsWith(mk)&&!NON_WORK.includes(v.type)&&v.type);
+  const work=Object.entries(rv).filter(([k,v])=>k.startsWith(mk)&&!NON_WORK.includes(v.type)&&v.type);
   const cD=work.filter(([k,v])=>v.type==='cielo').length;
   const gD=work.filter(([k,v])=>v.type==='glam').length;
 
-  const aoa=[[s.name+' スタイリスト別負担表 '+year+'年'+month+'月'],['']];
+  const ws={};
   const stylistTotalCells={};
-  // 店舗別の集計
-  const storeSummary={cielo:{stTotal:0,compTotal:0},glam:{stTotal:0,compTotal:0}};
+  let r=1;
+
+  wsSet(ws,1,r,s.name+' スタイリスト別負担表 '+year+'年'+month+'月'); r++;r++;
 
   ['cielo','glam'].forEach(store=>{
     const storeStylists=stylists.filter(st=>st.store===store);
+    const nSt=storeStylists.length;
     const storeDaysCnt=store==='cielo'?cD:gD;
 
-    aoa.push(['▼ '+store.toUpperCase()+'  出勤 '+storeDaysCnt+'日 ／ 日割単価 '+fmtYen(daily)+'  ／  ST負担(÷2) '+fmtYen(halfDaily)]);
-    aoa.push(['日付','曜日','出勤時間','ST人数','会社負担','ST負担計',...storeStylists.map(st=>st.name)]);
+    // セクション見出し
+    wsSet(ws,1,r,'▼ '+store.toUpperCase()+'  出勤'+storeDaysCnt+'日  日割単価:'+daily+'円  ST負担(÷2):'+halfDaily+'円'); r++;
 
+    // 列ヘッダー: A=日付 B=曜日 C=時間 D=ST人数 E=会社負担 F=ST負担計 G〜=各ST
+    wsSet(ws,1,r,'日付'); wsSet(ws,2,r,'曜日'); wsSet(ws,3,r,'出勤時間');
+    wsSet(ws,4,r,'ST人数'); wsSet(ws,5,r,'会社負担'); wsSet(ws,6,r,'ST負担計');
+    storeStylists.forEach((st,si)=>wsSet(ws,7+si,r,st.name));
+    r++;
+
+    const dataStart=r;
+    const workRows=[];
     const stTotals={};
     storeStylists.forEach(st=>{stTotals[st.id]=0;});
-    let monthCompTotal=0, monthStTotal=0;
 
     for(let d=1;d<=daysInMonth;d++){
       const dateKey=mk+'-'+String(d).padStart(2,'0');
       const date=new Date(year,m.getMonth(),d);
-      const v=r[dateKey];
+      const v=rv[dateKey];
       const isWork=v?.type===store;
       const dayStylists=getStylistsOnDate(store,date);
-      const n=dayStylists.length; // その日出勤のスタイリスト数
+      const n=dayStylists.length;
       const dow=DOW[date.getDay()];
 
+      wsSet(ws,1,r,d+'日'); wsSet(ws,2,r,dow);
+
       if(!isWork){
-        const label=v?.type?{off:'公休',summer:'夏休み',newyear:'年末年始',absent:'欠勤'}[v.type]||'':'';
-        const otherStore=v?.type&&['cielo','glam'].includes(v.type)&&v.type!==store?v.type+'出勤':'';
-        const displayLabel=label||(otherStore?otherStore+'出勤':'');
-        if(displayLabel||d){
-          const emptyStCols=storeStylists.map(()=>'');
-          aoa.push([d+'日',dow,displayLabel||'','','','',...emptyStCols]);
-        }
-        continue;
+        const label=v?.type?({off:'公休',summer:'夏休み',newyear:'年末年始',absent:'欠勤'}[v.type]||(v.type!==store&&['cielo','glam'].includes(v.type)?v.type+'出勤':'')):'';
+        wsSet(ws,3,r,label||'');
+        wsSet(ws,4,r,''); wsSet(ws,5,r,''); wsSet(ws,6,r,'');
+        storeStylists.forEach((_,si)=>wsSet(ws,7+si,r,''));
+      } else {
+        const timeStr=(v.start||'10:00')+'〜'+(v.end||'19:30');
+        const perStylist=n>0?Math.round(halfDaily/n):0;
+        const compAmt=daily-halfDaily;
+
+        wsSet(ws,3,r,timeStr);
+        wsSet(ws,4,r,n);
+        wsSet(ws,5,r,compAmt); // 会社負担（固定値）
+        // ST負担計=各STの列のSUM数式
+        const stColStart=col(7), stColEnd=col(6+nSt);
+        wsSet(ws,6,r,`SUM(${stColStart}${r}:${stColEnd}${r})`,true);
+
+        storeStylists.forEach((st,si)=>{
+          const stOut=!!dayStylists.find(x=>x.id===st.id);
+          wsSet(ws,7+si,r,stOut?perStylist:0);
+          if(stOut) stTotals[st.id]+=perStylist;
+        });
+        workRows.push(r);
       }
-
-      const timeStr=(v.start||'10:00')+'〜'+(v.end||'19:30');
-      // 1人あたり = ST負担(日割÷2) ÷ その日出勤ST人数
-      const perStylist = n>0 ? Math.round(halfDaily/n) : 0;
-      const compAmt = daily - halfDaily; // 会社負担 = 日割り - ST負担
-      const stDayTotal = storeStylists.reduce((sum,st)=>{
-        return sum+(dayStylists.find(x=>x.id===st.id)?perStylist:0);
-      },0);
-
-      monthCompTotal+=compAmt;
-      monthStTotal+=stDayTotal;
-
-      const row=[d+'日',dow,timeStr,n+'人',fmtYen(compAmt),fmtYen(stDayTotal)];
-      storeStylists.forEach(st=>{
-        const stOut=!!dayStylists.find(x=>x.id===st.id);
-        row.push(stOut?fmtYen(perStylist):'—');
-        if(stOut) stTotals[st.id]+=perStylist;
-      });
-      aoa.push(row);
+      r++;
     }
 
-    // 月合計行
-    const totalStSum=storeStylists.reduce((s,st)=>s+stTotals[st.id],0);
-    const totalRow=['★月合計','','','',fmtYen(monthCompTotal),fmtYen(totalStSum),...storeStylists.map(st=>fmtYen(stTotals[st.id]))];
-    aoa.push(totalRow);
-    aoa.push(['']);
-
-    storeSummary[store]={stTotal:totalStSum,compTotal:monthCompTotal};
-    storeStylists.forEach(st=>{
-      stylistTotalCells[st.id]=(stylistTotalCells[st.id]||0)+stTotals[st.id];
-    });
+    // 月合計行（数式でSUM）
+    wsSet(ws,1,r,'★月合計'); wsSet(ws,2,r,''); wsSet(ws,3,r,''); wsSet(ws,4,r,'');
+    if(workRows.length>0){
+      // 会社負担合計
+      wsSet(ws,5,r,`SUM(E${dataStart}:E${r-1})`,true);
+      // ST負担計合計
+      wsSet(ws,6,r,`SUM(F${dataStart}:F${r-1})`,true);
+      // 各ST合計
+      storeStylists.forEach((st,si)=>{
+        const c=7+si;
+        wsSet(ws,c,r,`SUM(${col(c)}${dataStart}:${col(c)}${r-1})`,true);
+        stylistTotalCells[st.id]=(stylistTotalCells[st.id]||0)+stTotals[st.id];
+      });
+    }
+    r+=2;
   });
 
-  // 全体まとめ
-  const totalMon=mon;
-  const totalSt=storeSummary.cielo.stTotal+storeSummary.glam.stTotal;
-  const totalComp=storeSummary.cielo.compTotal+storeSummary.glam.compTotal;
-  aoa.push(['','','','','','']);
-  aoa.push(['【全体まとめ】','会社負担合計','ST負担合計','合計','月給','差額']);
-  aoa.push(['',fmtYen(totalComp),fmtYen(totalSt),fmtYen(totalComp+totalSt),fmtYen(totalMon),fmtYen(totalMon-(totalComp+totalSt))]);
+  // 全体まとめ（数式）
+  wsSet(ws,1,r,'【全体まとめ】'); wsSet(ws,2,r,'会社負担合計'); wsSet(ws,3,r,'ST負担合計'); wsSet(ws,4,r,'合計'); wsSet(ws,5,r,'月給'); wsSet(ws,6,r,'差額'); r++;
+  wsSet(ws,1,r,'');
+  // まとめ行は計算済み値を入れる（シート参照が複雑になるため）
+  const totalSt=Object.values(stylistTotalCells).reduce((a,b)=>a+b,0);
+  const totalWorkDays=cD+gD;
+  const totalComp=(daily-halfDaily)*totalWorkDays;
+  wsSet(ws,2,r,totalComp); wsSet(ws,3,r,totalSt);
+  wsSet(ws,4,r,`${col(2)}${r}+${col(3)}${r}`,true);
+  wsSet(ws,5,r,mon);
+  wsSet(ws,6,r,`${col(5)}${r}-${col(4)}${r}`,true);
 
-  const ws=XLSX.utils.aoa_to_sheet(aoa);
-  // 列幅設定
-  ws['!cols']=[{wch:7},{wch:5},{wch:14},{wch:10},{wch:10},{wch:10},...Array(20).fill({wch:9})];
+  ws['!cols']=[{wch:7},{wch:5},{wch:14},{wch:8},{wch:10},{wch:10},...Array(20).fill({wch:8})];
   XLSX.utils.book_append_sheet(wb,ws,s.name.slice(0,8));
   return stylistTotalCells;
 }
 
-// スタイリスト別集計シート
+// ===== ST別集計シート =====
 function buildStylistSummarySheet(wb,m,mk,daysInMonth,cellMap){
   const year=m.getFullYear(),month=m.getMonth()+1;
   const monthlyStaff=staff.filter(s=>!s.leave&&!s.isHourly);
   const cStylists=stylists.filter(st=>st.store==='cielo');
   const gStylists=stylists.filter(st=>st.store==='glam');
+  const ws={};
+  let r=1;
 
-  const aoa=[
-    [year+'年'+month+'月  スタイリスト別アシスタント負担集計'],
-    [''],
-    ['店舗','スタイリスト',...monthlyStaff.map(s=>s.name),'合計']
-  ];
+  wsSet(ws,1,r,year+'年'+month+'月  スタイリスト別アシスタント負担集計'); r++;r++;
+
+  // ヘッダー
+  wsSet(ws,1,r,'店舗'); wsSet(ws,2,r,'スタイリスト');
+  monthlyStaff.forEach((s,i)=>wsSet(ws,3+i,r,s.name));
+  wsSet(ws,3+monthlyStaff.length,r,'合計');
+  r++;
+
+  const dataStart=r;
 
   ['cielo','glam'].forEach(store=>{
     const stls=store==='cielo'?cStylists:gStylists;
-    let storeTotals=monthlyStaff.map(()=>0);
-    let storeGrandTotal=0;
+    const secStart=r;
 
     stls.forEach((st,si)=>{
-      const row=[si===0?store:'',st.name];
+      wsSet(ws,1,r,si===0?store:'');
+      wsSet(ws,2,r,st.name);
       let rowTotal=0;
       monthlyStaff.forEach((s,i)=>{
         const amt=(cellMap[s.id]&&cellMap[s.id][st.id])||0;
-        row.push(amt>0?fmtYen(amt):'—');
+        wsSet(ws,3+i,r,amt);
         rowTotal+=amt;
-        storeTotals[i]+=amt;
       });
-      row.push(fmtYen(rowTotal));
-      storeGrandTotal+=rowTotal;
-      aoa.push(row);
+      // 合計列を数式で
+      wsSet(ws,3+monthlyStaff.length,r,`SUM(${col(3)}${r}:${col(2+monthlyStaff.length)}${r})`,true);
+      r++;
     });
 
-    // 店舗小計
-    const subRow=[store+'計','',...storeTotals.map(v=>fmtYen(v)),fmtYen(storeGrandTotal)];
-    aoa.push(subRow);
-    aoa.push([]);
+    // 店舗小計（数式）
+    wsSet(ws,1,r,store+'計'); wsSet(ws,2,r,'');
+    monthlyStaff.forEach((_,i)=>{
+      wsSet(ws,3+i,r,`SUM(${col(3+i)}${secStart}:${col(3+i)}${r-1})`,true);
+    });
+    wsSet(ws,3+monthlyStaff.length,r,`SUM(${col(3+monthlyStaff.length)}${secStart}:${col(3+monthlyStaff.length)}${r-1})`,true);
+    r+=2;
   });
 
-  // 全スタッフ合計行
-  const allTotals=monthlyStaff.map(s=>{
-    return [...cStylists,...gStylists].reduce((sum,st)=>sum+((cellMap[s.id]&&cellMap[s.id][st.id])||0),0);
+  // 総合計（数式）
+  wsSet(ws,1,r,'★総合計'); wsSet(ws,2,r,'');
+  monthlyStaff.forEach((_,i)=>{
+    wsSet(ws,3+i,r,`SUM(${col(3+i)}${dataStart}:${col(3+i)}${r-1})`,true);
   });
-  const grandTotal=allTotals.reduce((a,b)=>a+b,0);
-  aoa.push(['★総合計','',...allTotals.map(v=>fmtYen(v)),fmtYen(grandTotal)]);
+  wsSet(ws,3+monthlyStaff.length,r,`SUM(${col(3+monthlyStaff.length)}${dataStart}:${col(3+monthlyStaff.length)}${r-1})`,true);
 
-  const ws=XLSX.utils.aoa_to_sheet(aoa);
-  ws['!cols']=[{wch:8},{wch:10},...monthlyStaff.map(()=>({wch:10})),{wch:10}];
+  ws['!cols']=[{wch:8},{wch:10},...monthlyStaff.map(()=>({wch:12})),{wch:12}];
   XLSX.utils.book_append_sheet(wb,ws,'ST別集計');
 }
 
+// ===== アルバイトシート =====
 function buildHourlySheet(wb,s,m){
   const mk=mKey(m);
-  const r=getR(s.id);
+  const rv=getR(s.id);
   const wage=s.hourlyWage||1200;
   const defStart=s.defaultStart||'10:00';
   const defEnd=s.defaultEnd||'19:30';
-  const entries=Object.entries(r).filter(([k])=>k.startsWith(mk)).sort((a,b)=>a[0]<b[0]?-1:1);
-  const aoa=[[s.name+'（アルバイト）','','',m.getFullYear()+'年'+(m.getMonth()+1)+'月']];
-  aoa.push(['日付','店舗','開始','終了','休憩','労働時間','基本給','残業代','小計']);
-  let total=0;
+  const ws={};
+  let r=1;
+
+  wsSet(ws,1,r,s.name+'（アルバイト）');
+  wsSet(ws,4,r,m.getFullYear()+'年'+(m.getMonth()+1)+'月'); r++;
+
+  const hdrs=['日付','店舗','開始','終了','休憩(分)','労働時間(h)','基本給','残業代','小計'];
+  hdrs.forEach((h,i)=>wsSet(ws,i+1,r,h)); r++;
+
+  const dataStart=r;
+  const entries=Object.entries(rv).filter(([k])=>k.startsWith(mk)).sort((a,b)=>a[0]<b[0]?-1:1);
+
   entries.filter(([k,v])=>v.type&&!NON_WORK.includes(v.type)).forEach(([k,v])=>{
     const d=parseInt(k.split('-')[2]);
     const [sh,sm]=(v.start||defStart).split(':').map(Number);
     const [eh,em]=(v.end||defEnd).split(':').map(Number);
-    const breakMin=v.break!==undefined?v.break:60;
-    const workMin=(eh*60+em)-(sh*60+sm)-breakMin;
-    if(workMin<=0){aoa.push([d+'日',v.type,v.start,v.end,breakMin+'分','—','—','—','—']);return;}
-    const workH=workMin/60;
-    const normalH=Math.min(workH,8),overH=Math.max(workH-8,0);
-    const basePay=Math.round(wage*normalH),otPay=Math.round(wage*1.25*overH);
-    const sub=basePay+otPay;total+=sub;
-    aoa.push([d+'日',v.type,v.start||defStart,v.end||defEnd,breakMin+'分',workH.toFixed(1)+'h','¥'+basePay,otPay>0?'¥'+otPay:'—','¥'+sub]);
+    const bMin=v.break!==undefined?v.break:60;
+    const wMin=(eh*60+em)-(sh*60+sm)-bMin;
+
+    wsSet(ws,1,r,d+'日'); wsSet(ws,2,r,v.type);
+    wsSet(ws,3,r,v.start||defStart); wsSet(ws,4,r,v.end||defEnd); wsSet(ws,5,r,bMin);
+
+    if(wMin<=0){
+      wsSet(ws,6,r,0); wsSet(ws,7,r,0); wsSet(ws,8,r,0); wsSet(ws,9,r,0);
+    } else {
+      const workH=Math.round(wMin/60*100)/100;
+      const normalH=Math.min(workH,8);
+      const overH=Math.max(workH-8,0);
+      wsSet(ws,6,r,workH);
+      // 基本給=MIN(労働時間,8)*時給
+      wsSet(ws,7,r,`ROUND(MIN(${col(6)}${r},8)*${wage},0)`,true);
+      // 残業代=MAX(労働時間-8,0)*時給*1.25
+      wsSet(ws,8,r,`ROUND(MAX(${col(6)}${r}-8,0)*${wage}*1.25,0)`,true);
+      // 小計=基本給+残業代
+      wsSet(ws,9,r,`${col(7)}${r}+${col(8)}${r}`,true);
+    }
+    r++;
   });
-  aoa.push(['','','','','','','','合計','¥'+total]);
-  const ws=XLSX.utils.aoa_to_sheet(aoa);
+
+  // 合計行（数式）
+  wsSet(ws,1,r,'合計');
+  [7,8,9].forEach(c=>{
+    wsSet(ws,c,r,`SUM(${col(c)}${dataStart}:${col(c)}${r-1})`,true);
+  });
+
+  ws['!cols']=[{wch:7},{wch:7},{wch:8},{wch:8},{wch:8},{wch:10},{wch:10},{wch:10},{wch:10}];
   XLSX.utils.book_append_sheet(wb,ws,s.name.slice(0,10)+'_時給');
 }
 
