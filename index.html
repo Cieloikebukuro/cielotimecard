@@ -641,8 +641,9 @@ const NON_WORK=['off','summer','newyear','absent'];
 // =============================================
 let ownerPw = 'owner1234';
 let offLimit = 9;
-const SB_URL = 'https://gvyemhjssetnozlcgnru.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd2eWVtaGpzc2V0bm96bGNnbnJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMzk0MzYsImV4cCI6MjA4OTgxNTQzNn0.9C4mSIDQQy_8t351JG4iJxrQB_XXi34ivElNkhkAfqo';
+// ★ 2026-08-20: cielo-color → cielo-slip プロジェクトへ移行
+const SB_URL = 'https://wrxpulxxppdrxkkjgvrm.supabase.co';
+const SB_KEY = 'sb_publishable_vF9FUMNzkgpSe8Ex0QAGQg_AeT6e96F';
 let sbUrl = SB_URL, sbKey = SB_KEY, sbConnected = false;
 
 let stylists = [
@@ -1475,7 +1476,7 @@ function openDayEdit(key,day){
             <div style="display:flex;align-items:center;gap:6px;">
               <input class="time-input" type="number" id="edit-break" value="${breakMin}" min="0" max="240" style="width:70px;${breakChanged?'border-color:#E24B4A;background:#FCEBEB;color:#A32D2D;':''}" oninput="checkBreakChange(this)" />
               <span style="font-size:13px;color:#888;">分</span>
-              ${breakChanged?`<span style="font-size:11px;color:#E24B4A;font-weight:600;">（規定60分より短い）</span>`:`<span style="font-size:11px;color:#aaa;">規定60分</span>`}
+              ${breakChanged?`<span style="font-size:11px;color:#E24B4A;font-weight:600;">（規定60分より${breakMin<60?'短い':'長い'}）</span>`:`<span style="font-size:11px;color:#aaa;">規定60分</span>`}
             </div>
           </div>
           <div id="time-reason-area" style="${timeChanged?'':'display:none;'}">
