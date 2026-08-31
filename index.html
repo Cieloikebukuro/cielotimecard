@@ -1591,7 +1591,7 @@ async function saveDay(key){
   const tr=document.getElementById('time-reason-val');
   if(s)r[key].start=s.value; if(e)r[key].end=e.value;
   if(rs)r[key].reason=rs.value;
-  if(br)r[key].break=parseInt(br.value)||60;
+  if(br){const bv=parseInt(br.value);r[key].break=isNaN(bv)?60:Math.max(0,Math.min(240,bv));}
   if(tr)r[key].timeReason=tr.value;
   await sbSaveRecord(S.role,key,r[key]);
   S.editDay=null; document.getElementById('day-edit-area').innerHTML=''; renderMyPage(); resetSess();
@@ -1811,7 +1811,7 @@ async function saveAttEdit(key){
   if(st)r[key].start=st.value;
   if(en)r[key].end=en.value;
   if(rs)r[key].reason=rs.value;
-  if(br)r[key].break=parseInt(br.value)||60;
+  if(br){const bv=parseInt(br.value);r[key].break=isNaN(bv)?60:Math.max(0,Math.min(240,bv));}
   // オーナー編集でも確定状態はそのまま（オーナーは確定後も編集可能）
   await sbSaveRecord(s.id,key,r[key]);
   S.attEditDay=null;
