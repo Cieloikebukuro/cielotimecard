@@ -67,6 +67,7 @@
   .dt-btn.active{opacity:1;}
   .dt-off{background:#FAEEDA;color:#633806;border-color:#FAC775;}
   .dt-summer{background:#E1F5EE;color:#04342C;border-color:#9FE1CB;}
+  .dt-wishreg{background:#EBF4FD;color:#185FA5;border-color:#B5D4F4;}
   .summer-guide{background:#E1F5EE;border-radius:10px;padding:10px 14px;margin-bottom:1rem;font-size:12px;color:#04342C;line-height:1.6;border-left:3px solid #5DCAA5;}
   .off-limit-bar{display:flex;align-items:center;justify-content:space-between;background:#f5f5f0;border-radius:10px;padding:8px 14px;margin-bottom:1rem;}
   .off-limit-count{font-size:20px;font-weight:500;font-family:'DM Mono',monospace;color:#1a1a1a;}
@@ -542,7 +543,16 @@
       <div><span style="font-size:11px;color:#92400E;">⭐ 優先希望休</span><span style="font-size:18px;font-weight:500;font-family:'DM Mono',monospace;color:#92400E;margin-left:6px;" id="wish-priority-count">0</span><span style="font-size:12px;color:#92400E;margin-left:2px;">日</span></div>
       <div id="wish-priority-badge" style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:#FEF3C7;color:#92400E;"></div>
     </div>
-    <div style="font-size:11px;color:#888;margin-bottom:0.75rem;text-align:center;">タップで選択 → もう一度タップで⭐優先に → もう一度タップで解除</div>
+    <div id="wish-summer-status-bar" style="display:none;align-items:center;justify-content:space-between;background:#E1F5EE;border-radius:10px;padding:7px 14px;margin-bottom:1rem;border:1px solid #9FE1CB;">
+      <div><span style="font-size:11px;color:#04342C;">🌊 夏休み希望</span><span style="font-size:18px;font-weight:500;font-family:'DM Mono',monospace;color:#04342C;margin-left:6px;" id="wish-summer-count">0</span><span style="font-size:12px;color:#04342C;margin-left:2px;">/5日</span></div>
+      <div style="font-size:11px;color:#04342C;">先頭2日=公休希望・残り3日=夏休み希望</div>
+    </div>
+    <div class="day-type-bar" id="wish-mode-bar" style="margin-bottom:0.5rem;">
+      <button class="dt-btn dt-wishreg active" id="wmb-regular" onclick="setWishMode('regular')">通常の希望休</button>
+      <button class="dt-btn dt-summer" id="wmb-summer" onclick="setWishMode('summer')">🌊 夏休み希望</button>
+    </div>
+    <div id="wish-summer-guide-area"></div>
+    <div id="wish-tap-hint" style="font-size:11px;color:#888;margin-bottom:0.75rem;text-align:center;">タップで選択 → もう一度タップで⭐優先に → もう一度タップで解除</div>
     <div id="wish-expired-bar" style="display:none;background:#FCEBEB;border-radius:10px;padding:9px 14px;margin-bottom:1rem;font-size:12px;color:#A32D2D;font-weight:600;">⚠️ 提出期限を過ぎているため変更できません</div>
     <div id="wish-submitted-bar" style="display:none;background:#E1F5EE;border-radius:10px;padding:9px 14px;margin-bottom:1rem;font-size:12px;color:#0F6E56;font-weight:600;">✓ 提出済みです（期限前であれば変更できます）</div>
     <div class="card" style="padding:12px;">
@@ -804,7 +814,7 @@ async function loadFromSupabase(){
       wishData={};
       wishRows.forEach(w=>{
         if(!wishData[w.staff_id])wishData[w.staff_id]={};
-        wishData[w.staff_id][w.month]={regular:w.regular||[], priority:w.priority||[]};
+        wishData[w.staff_id][w.month]={regular:w.regular||[], priority:w.priority||[], summer:w.summer||[]};
       });
     } catch(e){}
     if(S.role && S.role!=='owner'){
@@ -1244,7 +1254,7 @@ function toggleHolDay(d){
     else if(!S.holData[d]){if(offLimit!==null&&countOffInHolData()>=offLimit)return;S.holData[d]='off';}
   } else {
     const idx=S.summerSel.indexOf(d);
-    if(idx>=0)S.summerSel=S.summerSel.filter(x=>x<d);
+    if(idx>=0)S.summerSel=S.summerSel.filter(x=>x!==d);
     else{S.summerSel.push(d);S.summerSel.sort((a,b)=>a-b);if(S.summerSel.length>5)S.summerSel=S.summerSel.slice(0,5);}
     if(S.summerSel.length===5){
       Object.keys(S.holData).forEach(k=>{if(S.holData[k]==='summer')delete S.holData[k];});
@@ -1377,7 +1387,7 @@ function nav(name,el){
   if(el)el.classList.add('on');
   if(name==='my')renderMyPage();
   if(name==='att')renderAtt();
-  if(name==='wish')renderWish();
+  if(name==='wish'){wishMode='regular';summerWishSel=[];renderWish();updateWishModeBar();}
   if(name==='salary')renderSalary();
   if(name==='stylist'){S_stylistStore='cielo';renderStylistPage();}
   if(name==='wari')renderWariPage();
@@ -2100,6 +2110,8 @@ let wishData = {};
 let wishSettings = {limit:9, priority:2, deadlineDay:25};
 let wishViewMonth = new Date();
 let wishMonth = null;
+let wishMode = 'regular'; // 'regular' | 'summer'（希望休画面内のタップモード切替。公休設定のS.curDayTypeとは別管理）
+let summerWishSel = []; // 夏休み希望モードでの一時選択（5日に達するとそのstaffのwishData[...].summerへ反映。tc_recordsには一切書き込まない）
 
 function getWishTargetMonth(){
   const now = new Date(), day = now.getDate(), deadline = wishSettings.deadlineDay||25;
@@ -2114,7 +2126,7 @@ function renderWish(){
   wishMonth = wm;
   const mk = mKey(wm);
   const s = staff.find(x=>x.id===S.role); if(!s)return;
-  const myWish = wishData[S.role]?.[mk]||{regular:[], priority:[]};
+  const myWish = wishData[S.role]?.[mk]||{regular:[], priority:[], summer:[]};
   const now = new Date(), deadline = wishSettings.deadlineDay||25;
   // 締切判定：今月の締切日を過ぎているかどうか
   const expired = false; // 常に申請可能（対象月はgetWishTargetMonthが自動切替）
@@ -2129,7 +2141,7 @@ function renderWish(){
   document.getElementById('wish-priority-badge').textContent = '⭐ 上限 '+(wishSettings.priority||2)+'日';
   document.getElementById('wish-cal-month').textContent = wm.getFullYear()+'年'+(wm.getMonth()+1)+'月';
 
-  const submitted = myWish.regular.length>0||myWish.priority.length>0;
+  const submitted = myWish.regular.length>0||myWish.priority.length>0||(myWish.summer?.length>0);
   document.getElementById('wish-expired-bar').style.display = expired ? 'block' : 'none';
   document.getElementById('wish-submitted-bar').style.display = (!expired&&submitted) ? 'block' : 'none';
   document.getElementById('wish-submit-btn').disabled = expired;
@@ -2141,38 +2153,76 @@ function renderWish(){
 
   let calHtml='';
   for(let i=0;i<firstDow;i++) calHtml+='<div></div>';
+  const sumArrSorted=(myWish.summer||[]).slice().sort((a,b)=>a-b);
   for(let d=1;d<=daysInMonth;d++){
     const k=mk+'-'+String(d).padStart(2,'0');
     const recType=r[k]?.type;
     const isOff=NON_WORK.includes(recType);
     const isPri=myWish.priority?.includes(d);
     const isReg=myWish.regular?.includes(d);
+    const sumIdx=sumArrSorted.indexOf(d);
+    const isSumOffWish=sumIdx>=0&&sumIdx<2; // 先頭2日＝公休希望
+    const isSumWish=sumIdx>=2; // 残り3日＝夏休み希望
+    const isSumSelecting=wishMode==='summer'&&summerWishSel.includes(d)&&sumArrSorted.length<5;
     const dow=new Date(wm.getFullYear(),wm.getMonth(),d).getDay();
     const isSun=dow===0,isSat=dow===6;
     let bg='transparent',color=isSun?'#C00000':isSat?'#2980B9':'#1a1a1a',border='0.5px solid transparent';
     let emoji='';
     if(isOff){bg='#f0f0f0';color='#bbb';}
+    else if(isSumOffWish){bg='#FAEEDA';color='#633806';border='1.5px solid #FAC775';emoji='🌊';}
+    else if(isSumWish){bg='#E1F5EE';color='#04342C';border='1.5px solid #9FE1CB';emoji='🌊';}
     else if(isPri){bg='#FEF3C7';color='#92400E';border='1.5px solid #F59E0B';emoji='⭐';}
     else if(isReg){bg='#EBF4FD';color='#185FA5';border='1.5px solid #3B82F6';}
-    const click=!isOff&&!expired;
-    calHtml+=`<div onclick="${click?`toggleWishDay(${d})`:'return'}" style="aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;background:${bg};color:${color};border:${border};font-size:12px;font-weight:500;cursor:${click?'pointer':'default'};">
+    const ring=isSumSelecting?'box-shadow:0 0 0 2px #1D9E75;':'';
+    // 夏休み希望が既に確定している日は通常モードから触れない／通常希望が入っている日は夏休みモードから触れない（toggle関数側でも同様にガード）
+    const click=!isOff&&!expired&&!(wishMode==='regular'&&sumIdx>=0);
+    const clickFn=wishMode==='summer'?`toggleSummerWishDay(${d})`:`toggleWishDay(${d})`;
+    calHtml+=`<div onclick="${click?clickFn:'return'}" style="aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;background:${bg};color:${color};border:${border};font-size:12px;font-weight:500;cursor:${click?'pointer':'default'};${ring}">
       ${emoji?`<div style="font-size:10px;">${emoji}</div>`:''}
       <div>${d}</div>
     </div>`;
   }
   document.getElementById('wish-cal-grid').innerHTML=calHtml;
 
-  const cnt=(myWish.regular?.length||0)+(myWish.priority?.length||0);
+  const cnt=(myWish.regular?.length||0)+(myWish.priority?.length||0)+(myWish.summer?.length||0);
   const pcnt=myWish.priority?.length||0;
   document.getElementById('wish-count').textContent=cnt;
   document.getElementById('wish-priority-count').textContent=pcnt;
+  const sumCnt=myWish.summer?.length||0;
+  const sumBar=document.getElementById('wish-summer-status-bar');
+  if(sumBar){
+    sumBar.style.display=(sumCnt>0||wishMode==='summer')?'flex':'none';
+    document.getElementById('wish-summer-count').textContent=wishMode==='summer'?summerWishSel.length:sumCnt;
+  }
+}
+
+function setWishMode(mode){
+  wishMode=mode;
+  const mk=mKey(wishMonth||getWishTargetMonth());
+  const myWish=wishData[S.role]?.[mk];
+  summerWishSel = (mode==='summer'&&myWish?.summer) ? myWish.summer.slice() : [];
+  updateWishModeBar();
+  renderWish();
+}
+function updateWishModeBar(){
+  const rb=document.getElementById('wmb-regular'), sb=document.getElementById('wmb-summer');
+  if(rb) rb.classList.toggle('active', wishMode==='regular');
+  if(sb) sb.classList.toggle('active', wishMode==='summer');
+  const ga=document.getElementById('wish-summer-guide-area');
+  if(ga) ga.innerHTML = wishMode==='summer'
+    ? '<div class="summer-guide">連続する5日を選択してください。先頭2日が<strong>公休希望</strong>、残り3日が<strong>夏休み希望</strong>として自動振り分けされます。あくまで「希望」の提出です。確定はオーナーが人員調整のうえ別途行います。</div>'
+    : '';
+  const hint=document.getElementById('wish-tap-hint');
+  if(hint) hint.textContent = wishMode==='summer' ? '🌊 連続する5日をタップして選択してください' : 'タップで選択 → もう一度タップで⭐優先に → もう一度タップで解除';
 }
 
 function toggleWishDay(d){
   const mk=mKey(wishMonth);
   if(!wishData[S.role])wishData[S.role]={};
-  if(!wishData[S.role][mk])wishData[S.role][mk]={regular:[],priority:[]};
+  if(!wishData[S.role][mk])wishData[S.role][mk]={regular:[],priority:[],summer:[]};
   const myWish=wishData[S.role][mk];
+  if(!myWish.summer)myWish.summer=[];
+  if(myWish.summer.includes(d))return; // 夏休み希望として確定済みの日は通常枠から触れない
   const limit=wishSettings.limit||9;
   const priLimit=wishSettings.priority||2;
 
@@ -2197,6 +2247,27 @@ function toggleWishDay(d){
   renderWish();
 }
 
+// 夏休み希望モード：公休設定の夏休みモードと同じUX（連続5日→先頭2日=公休希望／残り3日=夏休み希望）。
+// ただしtc_recordsへの即書き込みは一切行わず、wishData[...].summerへの反映のみ（提出はsubmitWish()で行う）
+function toggleSummerWishDay(d){
+  const mk=mKey(wishMonth);
+  if(!wishData[S.role])wishData[S.role]={};
+  if(!wishData[S.role][mk])wishData[S.role][mk]={regular:[],priority:[],summer:[]};
+  const myWish=wishData[S.role][mk];
+  if(!myWish.summer)myWish.summer=[];
+  if(myWish.regular?.includes(d)||myWish.priority?.includes(d))return; // 通常/優先希望休と重複させない
+
+  const idx=summerWishSel.indexOf(d);
+  if(idx>=0) summerWishSel=summerWishSel.filter(x=>x!==d);
+  else{
+    summerWishSel.push(d);
+    summerWishSel.sort((a,b)=>a-b);
+    if(summerWishSel.length>5) summerWishSel=summerWishSel.slice(0,5);
+  }
+  myWish.summer = summerWishSel.length===5 ? [...summerWishSel] : [];
+  renderWish();
+}
+
 function confirmWishReset(){
   const el=document.getElementById('wish-reset-confirm');
   if(!el) return;
@@ -2208,20 +2279,35 @@ function confirmWishReset(){
 
 async function submitWish(){
   const mk=mKey(wishMonth);
-  const myWish=wishData[S.role]?.[mk]||{regular:[],priority:[]};
+  const myWish=wishData[S.role]?.[mk]||{regular:[],priority:[],summer:[]};
+  let saveFailed=false;
   if(sbConnected){
     try{
       await sbFetch('tc_wish?on_conflict=staff_id,month', {
         method:'POST',
         headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
-        body:JSON.stringify({staff_id:S.role, month:mk, regular:myWish.regular||[], priority:myWish.priority||[]})
+        body:JSON.stringify({staff_id:S.role, month:mk, regular:myWish.regular||[], priority:myWish.priority||[], summer:myWish.summer||[]})
       });
-    } catch(e){ console.log('wish save skipped'); }
+    } catch(e){
+      // summerカラムが未対応の環境でも通常/優先希望休の提出自体は壊さないようフォールバック
+      try{
+        await sbFetch('tc_wish?on_conflict=staff_id,month', {
+          method:'POST',
+          headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+          body:JSON.stringify({staff_id:S.role, month:mk, regular:myWish.regular||[], priority:myWish.priority||[]})
+        });
+      } catch(e2){ console.log('wish save skipped'); saveFailed=true; }
+    }
   }
   const msg=document.getElementById('wish-ok');
-  msg.style.color='#1D9E75';
-  msg.textContent='✓ 提出しました（'+mk+'分）';
-  setTimeout(()=>msg.textContent='',3000);
+  if(saveFailed){
+    msg.style.color='#E24B4A';
+    msg.textContent='⚠️ 保存に失敗しました。もう一度お試しください';
+  } else {
+    msg.style.color='#1D9E75';
+    msg.textContent='✓ 提出しました（'+mk+'分）';
+    setTimeout(()=>msg.textContent='',3000);
+  }
   renderWish();
 }
 
@@ -2230,9 +2316,9 @@ function openMyWishReset(){
   if(area.innerHTML){area.innerHTML='';return;}
   const mk=mKey(wishMonth||getWishTargetMonth());
   const myWish=wishData[S.role]?.[mk];
-  const cnt=myWish?(myWish.regular?.length||0)+(myWish.priority?.length||0):0;
+  const cnt=myWish?(myWish.regular?.length||0)+(myWish.priority?.length||0)+(myWish.summer?.length||0):0;
   area.innerHTML=`<div class="pin-reset-modal" style="margin-bottom:1rem;">
-    <div style="font-size:13px;font-weight:500;margin-bottom:10px;">${mk.replace('-','年')}月の希望休をリセット（現在${cnt}日）</div>
+    <div style="font-size:13px;font-weight:500;margin-bottom:10px;">${mk.replace('-','年')}月の希望休をリセット（現在${cnt}日、夏休み希望含む）</div>
     <div style="display:flex;gap:8px;">
       <button onclick="doMyWishReset('${mk}')" style="flex:1;padding:9px;font-size:13px;font-weight:600;background:#FCEBEB;color:#A32D2D;border:1px solid #F7C1C1;border-radius:8px;cursor:pointer;">リセットする</button>
       <button onclick="document.getElementById('my-wish-reset-area').innerHTML=''" style="padding:9px 14px;font-size:13px;font-weight:500;background:#eee;color:#888;border:0.5px solid #ddd;border-radius:8px;cursor:pointer;">キャンセル</button>
@@ -2242,17 +2328,26 @@ function openMyWishReset(){
 
 async function doMyWishReset(mk){
   if(!wishData[S.role])wishData[S.role]={};
-  wishData[S.role][mk]={regular:[],priority:[]};
+  wishData[S.role][mk]={regular:[],priority:[],summer:[]};
+  summerWishSel=[];
   document.getElementById('my-wish-reset-area').innerHTML='';
-  // Supabaseにも反映
+  // Supabaseにも反映（夏休み希望もまとめてリセット）
   if(sbConnected){
     try{
       await sbFetch('tc_wish?on_conflict=staff_id,month',{
         method:'POST',
         headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
-        body:JSON.stringify({staff_id:S.role,month:mk,regular:[],priority:[]})
+        body:JSON.stringify({staff_id:S.role,month:mk,regular:[],priority:[],summer:[]})
       });
-    }catch(e){}
+    }catch(e){
+      try{
+        await sbFetch('tc_wish?on_conflict=staff_id,month',{
+          method:'POST',
+          headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+          body:JSON.stringify({staff_id:S.role,month:mk,regular:[],priority:[]})
+        });
+      }catch(e2){}
+    }
   }
   renderWish();
 }
@@ -2270,7 +2365,8 @@ function renderWishView(){
   document.getElementById('wishview-month-label').textContent=m.getFullYear()+'年'+(m.getMonth()+1)+'月';
   const activeStaff=staff.filter(s=>!s.leave);
   const legend=document.getElementById('wishview-legend');
-  legend.innerHTML=activeStaff.map((s,i)=>`<div style="display:flex;align-items:center;gap:4px;"><div style="width:10px;height:10px;border-radius:50%;background:${WISH_COLORS[i%WISH_COLORS.length]};"></div><div style="font-size:11px;color:#1a1a1a;">${s.name}</div></div>`).join('');
+  legend.innerHTML=activeStaff.map((s,i)=>`<div style="display:flex;align-items:center;gap:4px;"><div style="width:10px;height:10px;border-radius:50%;background:${WISH_COLORS[i%WISH_COLORS.length]};"></div><div style="font-size:11px;color:#1a1a1a;">${s.name}</div></div>`).join('')
+    +'<div style="width:100%;font-size:11px;color:#888;margin-top:4px;">● 通常希望休　★ 優先希望休　🌊 夏休み希望（先頭2日=公休希望／残り3日=夏休み希望）</div>';
   const daysInMonth=new Date(m.getFullYear(),m.getMonth()+1,0).getDate();
   const firstDow=new Date(m.getFullYear(),m.getMonth(),1).getDay();
   let calHtml='';
@@ -2281,8 +2377,10 @@ function renderWishView(){
     let dots='';
     activeStaff.forEach((s,i)=>{
       const myWish=wishData[s.id]?.[mk];
-      const isPri=myWish?.priority?.includes(d),isReg=myWish?.regular?.includes(d);
-      if(isPri){
+      const isPri=myWish?.priority?.includes(d),isReg=myWish?.regular?.includes(d),isSum=myWish?.summer?.includes(d);
+      if(isSum){
+        dots+=`<div style="width:10px;height:10px;border-radius:50%;background:${WISH_COLORS[i%WISH_COLORS.length]};border:2px solid #1D9E75;display:flex;align-items:center;justify-content:center;font-size:7px;" title="${s.name}（夏休み希望）">🌊</div>`;
+      } else if(isPri){
         dots+=`<div style="width:10px;height:10px;border-radius:50%;background:${WISH_COLORS[i%WISH_COLORS.length]};border:2px solid #F59E0B;display:flex;align-items:center;justify-content:center;font-size:6px;color:#fff;font-weight:bold;">★</div>`;
       } else if(isReg){
         dots+=`<div style="width:10px;height:10px;border-radius:50%;background:${WISH_COLORS[i%WISH_COLORS.length]};"></div>`;
@@ -2296,14 +2394,16 @@ function renderWishView(){
   document.getElementById('wishview-cal-grid').innerHTML=calHtml;
   let statusHtml='';
   activeStaff.forEach((s,i)=>{
-    const myWish=wishData[s.id]?.[mk]||{regular:[],priority:[]};
-    const total=(myWish.regular?.length||0)+(myWish.priority?.length||0);
+    const myWish=wishData[s.id]?.[mk]||{regular:[],priority:[],summer:[]};
+    const sumDays=(myWish.summer||[]).slice().sort((a,b)=>a-b);
+    const total=(myWish.regular?.length||0)+(myWish.priority?.length||0)+sumDays.length;
     const priCount=myWish.priority?.length||0;
     const allDays=[...(myWish.priority||[]),...(myWish.regular||[])].sort((a,b)=>a-b);
+    const sumBadges=sumDays.map((d,idx)=>`<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:${idx<2?'#FAEEDA':'#E1F5EE'};color:${idx<2?'#633806':'#04342C'};">🌊${d}日${idx<2?'(公休希望)':'(夏休み希望)'}</span>`).join('');
     statusHtml+=`<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:0.5px solid #e5e5e0;">
       <div style="width:10px;height:10px;border-radius:50%;background:${WISH_COLORS[i%WISH_COLORS.length]};flex-shrink:0;margin-top:4px;"></div>
-      <div style="flex:1;"><div style="font-size:13px;font-weight:500;color:#1a1a1a;margin-bottom:4px;">${s.name}　<span style="font-size:12px;color:#888;">${total}日${priCount>0?' (⭐'+priCount+'日)':''}</span></div>
-      <div style="display:flex;flex-wrap:wrap;gap:4px;">${allDays.map(d=>`<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:${(myWish.priority||[]).includes(d)?'#FEF3C7':'#EBF4FD'};color:${(myWish.priority||[]).includes(d)?'#92400E':'#185FA5'};">${d}日${(myWish.priority||[]).includes(d)?'⭐':''}</span>`).join('')}</div></div>
+      <div style="flex:1;"><div style="font-size:13px;font-weight:500;color:#1a1a1a;margin-bottom:4px;">${s.name}　<span style="font-size:12px;color:#888;">${total}日${priCount>0?' (⭐'+priCount+'日)':''}${sumDays.length>0?' (🌊'+sumDays.length+'日)':''}</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;">${allDays.map(d=>`<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:${(myWish.priority||[]).includes(d)?'#FEF3C7':'#EBF4FD'};color:${(myWish.priority||[]).includes(d)?'#92400E':'#185FA5'};">${d}日${(myWish.priority||[]).includes(d)?'⭐':''}</span>`).join('')}${sumBadges}</div></div>
     </div>`;
   });
   document.getElementById('wishview-status-list').innerHTML=statusHtml||'<div style="color:#888;font-size:13px;padding:1rem 0;">提出者なし</div>';
@@ -2344,9 +2444,13 @@ function exportWishPDF(){
         const myWish=wishData[s.id]?.[mk];
         const isPri=myWish?.priority?.includes(d);
         const isReg=myWish?.regular?.includes(d);
-        if(!isPri&&!isReg) return '';
+        const isSum=myWish?.summer?.includes(d);
+        if(!isPri&&!isReg&&!isSum) return '';
         const color=WISH_COLORS[si%WISH_COLORS.length];
-        if(isPri){
+        if(isSum){
+          // 夏休み希望：丸+緑枠+🌊
+          return `<span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:${color};border:2px solid #1D9E75;font-size:9px;" title="${s.name}（夏休み希望）">🌊</span>`;
+        } else if(isPri){
           // 優先：星形バッジ風（丸+太枠+★）
           return `<span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:${color};border:2px solid #F59E0B;font-size:8px;color:#fff;font-weight:bold;" title="${s.name}（優先）">★</span>`;
         } else {
@@ -2362,12 +2466,14 @@ function exportWishPDF(){
 
   // 提出状況テーブル
   const statusRows=activeStaff.map((s,si)=>{
-    const myWish=wishData[s.id]?.[mk]||{regular:[],priority:[]};
+    const myWish=wishData[s.id]?.[mk]||{regular:[],priority:[],summer:[]};
     const priDays=(myWish.priority||[]).sort((a,b)=>a-b);
     const regDays=(myWish.regular||[]).sort((a,b)=>a-b);
-    const total=priDays.length+regDays.length;
+    const sumDays=(myWish.summer||[]).slice().sort((a,b)=>a-b);
+    const total=priDays.length+regDays.length+sumDays.length;
     const priHtml=priDays.map(d=>`<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#FEF3C7;color:#92400E;font-size:11px;margin:2px;">★${d}日</span>`).join('');
     const regHtml=regDays.map(d=>`<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:#EBF4FD;color:#185FA5;font-size:11px;margin:2px;">${d}日</span>`).join('');
+    const sumHtml=sumDays.map((d,idx)=>`<span style="display:inline-block;padding:2px 8px;border-radius:10px;background:${idx<2?'#FAEEDA':'#E1F5EE'};color:${idx<2?'#633806':'#04342C'};font-size:11px;margin:2px;">🌊${d}日</span>`).join('');
     return `<tr>
       <td style="white-space:nowrap;">
         <span style="display:inline-flex;align-items:center;gap:6px;">
@@ -2376,7 +2482,7 @@ function exportWishPDF(){
         </span>
       </td>
       <td style="text-align:center;">${total}日</td>
-      <td>${priHtml}${regHtml}${total===0?'<span style="color:#aaa;">なし</span>':''}</td>
+      <td>${priHtml}${regHtml}${sumHtml}${total===0?'<span style="color:#aaa;">なし</span>':''}</td>
     </tr>`;
   }).join('');
 
@@ -2406,7 +2512,7 @@ function exportWishPDF(){
     <thead><tr><th style="width:80px;">スタッフ</th><th style="width:50px;">合計</th><th>希望日</th></tr></thead>
     <tbody>${statusRows}</tbody>
   </table>
-  <div class="note">● 通常希望休　★ 優先希望休（黄枠）</div>
+  <div class="note">● 通常希望休　★ 優先希望休（黄枠）　🌊 夏休み希望（緑枠。先頭2日=公休希望／残り3日=夏休み希望）</div>
   </body></html>`);
   w.document.close();
   setTimeout(()=>w.print(),500);
@@ -3034,24 +3140,30 @@ window.addEventListener('load', async function(){
   const storedLimit=localStorage.getItem('tc_offLimit');
   if(storedLimit!==null){offLimit=storedLimit==='null'?null:parseInt(storedLimit)||9;}
 
-  // 保存済みのSupabase設定を確認して自動接続
+  // 保存済みのSupabase設定を確認して自動接続（失敗時は埋め込みキーで自己修復）
   const storedUrl=localStorage.getItem('tc_sb_url')||SB_URL;
   const storedKey=localStorage.getItem('tc_sb_key')||SB_KEY;
-  if(storedUrl&&storedKey){
-    sbUrl=storedUrl; sbKey=storedKey;
-    try{
-      const res=await fetch(sbUrl+'/rest/v1/tc_staff?select=id&limit=1',{headers:{'apikey':sbKey,'Authorization':'Bearer '+sbKey}});
-      if(res.ok){
-        sbConnected=true;
-        const dot=document.getElementById('sb-dot');
-        const bar=document.getElementById('sb-status-bar');
-        const txt=document.getElementById('sb-status-text');
-        if(dot)dot.className='sb-dot on';
-        if(bar)bar.className='sb-status connected';
-        if(txt)txt.textContent='Supabase 接続中（データはクラウドに保存されます）';
-        await loadFromSupabase();
-      }
-    } catch(e){console.log('Auto-connect failed');}
+  const _tryConn=async(u,k)=>{try{const res=await fetch(u+'/rest/v1/tc_staff?select=id&limit=1',{headers:{'apikey':k,'Authorization':'Bearer '+k}});return res.ok;}catch(e){return false;}};
+  {
+    let u=storedUrl,k=storedKey,ok=await _tryConn(u,k);
+    if(!ok&&(u!==SB_URL||k!==SB_KEY)){
+      // 保存済みキーが無効 → 埋め込みキーで再試行し、成功したら古い設定を掃除
+      if(await _tryConn(SB_URL,SB_KEY)){u=SB_URL;k=SB_KEY;ok=true;localStorage.removeItem('tc_sb_url');localStorage.removeItem('tc_sb_key');}
+    }
+    sbUrl=u;sbKey=k;sbConnected=ok;
+    const dot=document.getElementById('sb-dot');
+    const bar=document.getElementById('sb-status-bar');
+    const txt=document.getElementById('sb-status-text');
+    if(ok){
+      if(dot)dot.className='sb-dot on';
+      if(bar)bar.className='sb-status connected';
+      if(txt)txt.textContent='Supabase 接続中（データはクラウドに保存されます）';
+      await loadFromSupabase();
+    }else{
+      if(dot)dot.className='sb-dot off';
+      if(bar)bar.className='sb-status disconnected';
+      if(txt)txt.textContent='⚠ Supabaseに接続できません（設定タブで再接続してください）';
+    }
   }
 
   // 希望休設定を読み込む
