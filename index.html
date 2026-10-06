@@ -539,6 +539,7 @@
       <div><span style="font-size:11px;color:#888;">選択中</span><span style="font-size:22px;font-weight:500;font-family:'DM Mono',monospace;color:#1a1a1a;margin-left:6px;" id="wish-count">0</span><span style="font-size:12px;color:#888;margin-left:2px;">日</span></div>
       <div id="wish-limit-badge" style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:#EBF4FD;color:#185FA5;"></div>
     </div>
+    <div id="wish-overlimit-warn" style="display:none;background:#FCEBEB;border:1px solid #F7C1C1;border-radius:10px;padding:8px 14px;margin-bottom:1rem;font-size:12px;color:#A32D2D;font-weight:600;"></div>
     <div style="display:flex;align-items:center;justify-content:space-between;background:#FFFBEB;border-radius:10px;padding:7px 14px;margin-bottom:1rem;border:1px solid #FDE68A;">
       <div><span style="font-size:11px;color:#92400E;">⭐ 優先希望休</span><span style="font-size:18px;font-weight:500;font-family:'DM Mono',monospace;color:#92400E;margin-left:6px;" id="wish-priority-count">0</span><span style="font-size:12px;color:#92400E;margin-left:2px;">日</span></div>
       <div id="wish-priority-badge" style="font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:#FEF3C7;color:#92400E;"></div>
@@ -2137,15 +2138,34 @@ function renderWish(){
   const deadlineMonth = now.getDate() <= deadline ? now.getMonth()+1 : now.getMonth()+1;
   document.getElementById('wish-subtitle').textContent = '毎月'+deadline+'日までに提出';
   document.getElementById('wish-deadline-disp').textContent = now.getFullYear()+'年'+now.getMonth()+'月'+deadline+'日まで';
-  document.getElementById('wish-limit-badge').textContent = '上限 '+(wishSettings.limit||9)+'日';
+  // 夏休み希望が5日そろっている場合、うち先頭2日は「公休希望」分としてカウントし、
+  // 通常希望休（regular+priority）の選択可能日数を自動で2日減らす
+  const summerOff = (myWish.summer?.length===5) ? 2 : 0;
+  const baseLimit = wishSettings.limit||9;
+  const effLimit = Math.max(0, baseLimit - summerOff);
+  document.getElementById('wish-limit-badge').textContent = summerOff
+    ? '上限 '+effLimit+'日（夏休み分-2）'
+    : '上限 '+baseLimit+'日';
   document.getElementById('wish-priority-badge').textContent = '⭐ 上限 '+(wishSettings.priority||2)+'日';
   document.getElementById('wish-cal-month').textContent = wm.getFullYear()+'年'+(wm.getMonth()+1)+'月';
+
+  const regPriTotal = (myWish.regular?.length||0)+(myWish.priority?.length||0);
+  const overWarn = document.getElementById('wish-overlimit-warn');
+  if(overWarn){
+    if(summerOff && regPriTotal>effLimit){
+      overWarn.style.display='block';
+      overWarn.textContent = '⚠️ 夏休み希望（公休分2日）を含めると上限'+baseLimit+'日を超えています。通常の希望休を'+(regPriTotal-effLimit)+'日減らしてください。';
+    } else {
+      overWarn.style.display='none';
+    }
+  }
 
   const submitted = myWish.regular.length>0||myWish.priority.length>0||(myWish.summer?.length>0);
   document.getElementById('wish-expired-bar').style.display = expired ? 'block' : 'none';
   document.getElementById('wish-submitted-bar').style.display = (!expired&&submitted) ? 'block' : 'none';
-  document.getElementById('wish-submit-btn').disabled = expired;
-  document.getElementById('wish-submit-btn').style.opacity = expired ? '0.4' : '1';
+  const overLimit = summerOff && regPriTotal>effLimit;
+  document.getElementById('wish-submit-btn').disabled = expired||overLimit;
+  document.getElementById('wish-submit-btn').style.opacity = (expired||overLimit) ? '0.4' : '1';
 
   const daysInMonth=new Date(wm.getFullYear(),wm.getMonth()+1,0).getDate();
   const firstDow=new Date(wm.getFullYear(),wm.getMonth(),1).getDay();
@@ -2223,7 +2243,9 @@ function toggleWishDay(d){
   const myWish=wishData[S.role][mk];
   if(!myWish.summer)myWish.summer=[];
   if(myWish.summer.includes(d))return; // 夏休み希望として確定済みの日は通常枠から触れない
-  const limit=wishSettings.limit||9;
+  // 夏休み希望が5日そろっている場合、先頭2日分（公休希望）を通常枠の上限から差し引く
+  const summerOff=(myWish.summer?.length===5)?2:0;
+  const limit=(wishSettings.limit||9)-summerOff;
   const priLimit=wishSettings.priority||2;
 
   if(myWish.priority?.includes(d)){
